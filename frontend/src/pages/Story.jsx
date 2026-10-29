@@ -3,23 +3,26 @@ import { api } from "../api.js";
 import { useAsync } from "../hooks.js";
 import { C, CLASS, CLASSES, STRATEGY, axis, chartBase, fmtTime, pct } from "../theme.js";
 import FloorMap from "../components/FloorMap.jsx";
-import { Chart, Loading, Segmented } from "../components/ui.jsx";
+import { Chart, ErrorState, Loading, Segmented } from "../components/ui.jsx";
 
 export default function Story({ fleet, go }) {
   const story = useAsync(() => api.story(), []);
   const cal = useAsync(() => api.calibration(), []);
   const fair = useAsync(() => api.fairness(), []);
   const s = story.data;
+  const error = story.error || cal.error || fair.error;
 
   return (
     <div className="page story">
       <Hero fleet={fleet} s={s} go={go} />
-      {!s || !cal.data || !fair.data ? <Loading what="Loading results" /> : (
+      {error ? <ErrorState title="Couldn't load the research results" error={error}
+                           onRetry={() => { story.retry(); cal.retry(); fair.retry(); }}>
+        The findings need the story, calibration, and fairness results from the plant data.
+      </ErrorState> : !s || !cal.data || !fair.data ? <Loading what="Loading results" /> : (
         <>
-          <StepOne s={s} cal={cal.data} />
+          <StepOne cal={cal.data} />
           <StepTwo s={s} fair={fair.data} />
-          <StepThree s={s} fair={fair.data} />
-          <Outcome s={s} go={go} />
+          <Outcome go={go} />
         </>
       )}
     </div>
@@ -39,24 +42,20 @@ function Hero({ fleet, s, go }) {
   return (
     <section className="hero">
       <div className="hero-text">
-        <h1>Three kinds of machine, three AI models, one maintenance crew. Which machine do you fix first?</h1>
-        <p>
-          Plants usually run a separate failure-prediction model for each machine type. Each model is fine on its
-          own, but their scores mean different things, so nobody can tell which alert matters most. This platform
-          turns them into one queue the crew can trust, and checks that no machine type gets ignored.
-        </p>
+        <h1>One crew. One queue. Better decisions.</h1>
+        <p>Three machine-specific models. One ranked maintenance queue. Fairness measured at every step.</p>
         <div className="hero-actions">
           <button className="btn primary" onClick={() => go("control")}>Open the control room</button>
           <a className="btn ghost" href="#step-1">Read the findings</a>
         </div>
         {s && (
           <p className="hero-facts">
-            {s.machines} machines, {s.windows} six-hour shifts and {s.failures_in_test} real failures in the test period.
+            {s.machines} machines, {s.windows} six-hour shifts and {s.failures_in_test} failure events in the held-out test period.
           </p>
         )}
       </div>
       <div className="hero-map" aria-label="Live replay of the plant floor">
-        {win.data && (
+        {win.error ? <ErrorState title="Couldn't load the plant replay" error={win.error} onRetry={win.retry} /> : win.data && (
           <>
             <div className="hero-map-head">
               <span className="live-dot" aria-hidden="true" />
@@ -76,19 +75,18 @@ function Step({ n, id, title, children, aside }) {
     <section className="step" id={id}>
       <div className="step-n" aria-hidden="true">{n}</div>
       <div className="step-body">
-        <h2>{title}</h2>
-        <div className="step-grid">
-          <div className="step-copy">{aside}</div>
-          <div className="step-viz">{children}</div>
+        <div className="step-copy">
+          <h2>{title}</h2>
+          {aside}
         </div>
+        <div className="step-viz">{children}</div>
       </div>
     </section>
   );
 }
 
-function StepOne({ s, cal }) {
+function StepOne({ cal }) {
   const [view, setView] = useState("raw");
-  const comp = s.calibration.find((c) => c.machine_class === "compressor");
   const obs = cal.curves.compressor.observed_at_0_8;
   const option = {
     ...chartBase,
@@ -110,21 +108,13 @@ function StepOne({ s, cal }) {
     ],
   };
   return (
-    <Step n="1" id="step-1" title="The three models don't speak the same language"
+    <Step n="1" id="step-1" title="Raw scores are not comparable"
           aside={<>
-            <p>
-              Each model outputs a number between 0 and 100%. You would expect 80% to mean the same thing everywhere.
-              It doesn't.
-            </p>
+            <p>Raw model scores share a 0–100% scale, but not the same probability meaning.</p>
             <p className="callout">
               When the compressor model said 70–90%, compressors actually failed only <b>{pct(obs)}</b> of the time.
             </p>
-            <p>
-              The models over-state risk, the compressor model most of all: it averages {pct(comp.mean_raw_risk)} risk
-              where the true rate is {pct(comp.actual_rate)}. We re-scale each model separately on held-back data
-              (calibration), which cuts the error by {Math.round(Math.min(...s.calibration.map((c) => c.brier_improvement_pct)))}–
-              {Math.round(Math.max(...s.calibration.map((c) => c.brier_improvement_pct)))}%.
-            </p>
+            <p>Calibration re-scales each model on held-out data before the models are ranked together.</p>
           </>}>
       <Segmented label="Score type" value={view} onChange={setView}
                  options={[{ value: "raw", label: "Raw model scores" }, { value: "calibrated", label: "After calibration" }]} />
@@ -154,52 +144,29 @@ function recallBars(fair, k, strategies) {
 }
 
 function StepTwo({ s, fair }) {
-  const [k, setK] = useState(s.k);
-  const c1 = s.compressor.S1_raw, c2 = s.compressor.S2_calibrated;
-  return (
-    <Step n="2" title="Fixing the language alone hides compressor failures"
-          aside={<>
-            <p>
-              Once scores are calibrated, the compressor model is honest but unsure: even its real failures only
-              reach moderate risk. Sharper motor predictions push them down the queue.
-            </p>
-            <p className="callout">
-              With {s.k} crew slots per shift, the share of real compressor failures that reach the queue drops from{" "}
-              <b>{pct(c1.recall)}</b> to <b>{pct(c2.recall)}</b>.
-            </p>
-            <p>
-              That drop is statistically real: across 1,000 resamples of the test shifts it stays between{" "}
-              {Math.round(-c2.ci_high * 100)} and {Math.round(-c2.ci_low * 100)} points. With a smaller crew it gets much worse.
-              Try the slider.
-            </p>
-          </>}>
-      <label className="field crew">
-        <span>Crew can inspect <b>{k}</b> machines per shift</span>
-        <input type="range" min={2} max={16} value={k} onChange={(e) => setK(Number(e.target.value))} />
-      </label>
-      <Chart height={320} option={recallBars(fair, k, ["S1_raw", "S2_calibrated"])} />
-    </Step>
-  );
-}
-
-function StepThree({ s, fair }) {
   const [k, setK] = useState(4);
-  const t = s.tight_crew;
+  const raw = s.compressor.S1_raw;
+  const calibrated = s.compressor.S2_calibrated;
+  const priority = s.compressor.S3_risk_priority;
+  const atFour = (strategy) => fair.sensitivity.find((row) => row.strategy === strategy && row.k === 4);
+  const priorityAtFour = atFour("S3_risk_priority");
+  const safeguardAtFour = atFour("S4_class_fair");
   return (
-    <Step n="3" title="Weighting by consequence and data freshness puts them back"
+    <Step n="2" title="A queue is a policy choice"
           aside={<>
             <p>
-              The queue should rank by what a failure would cost, not by probability alone. Our rule multiplies
-              calibrated risk by a consequence weight per machine type and by how fresh the readings are.
+              At {s.k} crew slots, calibration alone lowers compressor recall from <b>{pct(raw.recall, 1)}</b> to{" "}
+              <b>{pct(calibrated.recall, 1)}</b>. Its 95% bootstrap interval is a {(-calibrated.ci_high * 100).toFixed(1)}–
+              {(-calibrated.ci_low * 100).toFixed(1)} point decrease.
             </p>
             <p className="callout">
-              Compressor recall returns to <b>{pct(s.compressor.S3_risk_priority.recall)}</b>, and overall recall
-              stays at {pct(s.overall.S3_risk_priority.recall)} (raw scores: {pct(s.overall.S1_raw.recall)}).
+              Risk × consequence × freshness returns compressor recall to <b>{pct(priority.recall, 1)}</b> while overall
+              recall is <b>{pct(s.overall.S3_risk_priority.recall, 1)}</b> (raw scores: {pct(s.overall.S1_raw.recall, 1)}).
             </p>
             <p>
-              This is a policy choice, not a free lunch. With 4 slots, motors give up some attention (from{" "}
-              {pct(t.S1_raw.motor)} to {pct(t.S3_risk_priority.motor)}) so pumps and compressors get more. The
-              optional safeguard guarantees each machine type at least one slot when it has a credible alert.
+              With four slots, the class safeguard raises compressor recall from {pct(priorityAtFour.recall_compressor, 1)} to{" "}
+              {pct(safeguardAtFour.recall_compressor, 1)}, but lowers overall recall from {pct(priorityAtFour.recall_at_k, 1)} to{" "}
+              {pct(safeguardAtFour.recall_at_k, 1)}. It redistributes access; it does not guarantee a gain.
             </p>
           </>}>
       <label className="field crew">
@@ -211,30 +178,14 @@ function StepThree({ s, fair }) {
   );
 }
 
-function Outcome({ s, go }) {
+function Outcome({ go }) {
   return (
     <section className="outcome">
-      <h2>What this gives a plant</h2>
-      <div className="outcome-grid">
-        <div>
-          <h3>One queue instead of three alarm lists</h3>
-          <p>Every shift, the crew gets a ranked list with a plain reason for each machine.</p>
-        </div>
-        <div>
-          <h3>No machine type left behind</h3>
-          <p>Fairness is measured per machine type, so a weaker model can't quietly lose its alerts.</p>
-        </div>
-        <div>
-          <h3>Models that explain themselves</h3>
-          <p>For any machine, see which sensor is driving the risk and test "what if" changes live.</p>
-        </div>
-      </div>
       <div className="limits">
-        <h3>What we state up front</h3>
+        <h2>Scope and limits</h2>
         <p>
-          The plant data is simulated, so these results show how the method behaves, not accuracy on real equipment.
-          The consequence weights are assumptions that a plant would replace with its own downtime costs. The next
-          step is a pilot on one production line's historian and maintenance records.
+          The data is simulated: these findings show how the queue behaves, not accuracy on real equipment.
+          Consequence weights are prototype assumptions that a plant would replace with its own downtime costs.
         </p>
       </div>
       <div className="hero-actions">

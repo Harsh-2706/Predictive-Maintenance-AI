@@ -62,6 +62,17 @@ export function Loading({ what = "Loading" }) {
   return <div className="loading"><div className="spinner" />{what}…</div>;
 }
 
+export function ErrorState({ title = "Something went wrong", error, onRetry, children }) {
+  const detail = error instanceof Error ? error.message : String(error || "");
+  return (
+    <Notice title={title} tone="error">
+      {children && <div>{children}</div>}
+      {detail && <p className="fine error">Details: {detail}</p>}
+      {onRetry && <button type="button" className="btn ghost" onClick={onRetry}>Try again</button>}
+    </Notice>
+  );
+}
+
 export function Bar({ value, color, max = 1 }) {
   return (
     <span className="bar" aria-hidden="true">

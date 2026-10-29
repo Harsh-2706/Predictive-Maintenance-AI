@@ -1,28 +1,29 @@
 // Single source of colour and wording. Safety yellow = "in the maintenance queue",
 // signal red = "failure". Nothing else uses those two colours.
 export const C = {
-  bg: "#E3E5E0",
-  panel: "#F3F4F0",
-  ink: "#1F2328",
-  muted: "#5B636B",
-  rule: "#C6CAC3",
+  bg: "#F6F2EA",
+  panel: "#FFFCF6",
+  ink: "#1E2422",
+  muted: "#5D625F",
+  rule: "#D8D1C5",
   safety: "#F2B705",
-  signal: "#C0392B",
-  calm: "#D4D8D1",
+  signal: "#D94A38",
+  cobalt: "#3346C7",
+  calm: "#E2DDD3",
 };
 
 export const CLASS = {
-  motor: { color: "#3D5F8F", name: "Motors", one: "motor", bay: "Motor bay" },
-  pump: { color: "#2A7F6F", name: "Pumps", one: "pump", bay: "Pump house" },
-  compressor: { color: "#8B4C9C", name: "Compressors", one: "compressor", bay: "Compressor room" },
+  motor: { color: "#365CC8", name: "Motors", one: "motor", bay: "Motor bay" },
+  pump: { color: "#007D73", name: "Pumps", one: "pump", bay: "Pump house" },
+  compressor: { color: "#973DA7", name: "Compressors", one: "compressor", bay: "Compressor room" },
 };
 export const CLASSES = ["motor", "pump", "compressor"];
 
 export const STRATEGY = {
-  S1_raw: { short: "Raw scores", long: "Rank by each model's raw score", color: "#9AA0A6" },
-  S2_calibrated: { short: "Calibrated only", long: "Rank by calibrated failure risk", color: "#6E8FC7" },
-  S3_risk_priority: { short: "Risk × consequence", long: "Calibrated risk × consequence × data freshness", color: "#1F3F8F" },
-  S4_class_fair: { short: "With class safeguard", long: "Risk × consequence, plus a guaranteed slot per machine type", color: "#C77D1A" },
+  S1_raw: { short: "Raw scores", long: "Rank by each model's raw score", color: "#8D938F" },
+  S2_calibrated: { short: "Calibrated only", long: "Rank by calibrated failure risk", color: "#6682B7" },
+  S3_risk_priority: { short: "Risk × consequence", long: "Calibrated risk × consequence × data freshness", color: "#3346C7" },
+  S4_class_fair: { short: "With class safeguard", long: "Risk × consequence, plus a guaranteed slot per machine type", color: "#A86818" },
 };
 export const STRATEGIES = Object.keys(STRATEGY);
 
@@ -36,11 +37,11 @@ export const MODEL_NAME = {
 export function riskColor(r) {
   if (r == null) return "#BFC3BC";
   const stops = [
-    [0, [212, 216, 209]],
-    [0.15, [228, 214, 150]],
-    [0.4, [230, 160, 60]],
-    [0.7, [205, 90, 45]],
-    [1, [168, 40, 30]],
+    [0, [226, 221, 211]],
+    [0.15, [239, 218, 139]],
+    [0.4, [233, 168, 63]],
+    [0.7, [217, 103, 63]],
+    [1, [217, 74, 56]],
   ];
   for (let i = 1; i < stops.length; i++) {
     if (r <= stops[i][0]) {
@@ -51,7 +52,7 @@ export function riskColor(r) {
       return `rgb(${c.join(",")})`;
     }
   }
-  return "rgb(168,40,30)";
+  return "rgb(217,74,56)";
 }
 
 export const pct = (x, d = 0) => (x == null ? "–" : `${(x * 100).toFixed(d)}%`);
@@ -67,13 +68,13 @@ export const sensorUnit = (s) =>
 export const chartBase = {
   textStyle: { fontFamily: "Barlow, sans-serif", color: C.ink },
   grid: { left: 48, right: 16, top: 28, bottom: 36, containLabel: false },
-  tooltip: { backgroundColor: "#FFFFFF", borderColor: C.rule, textStyle: { color: C.ink, fontSize: 13 } },
+  tooltip: { backgroundColor: C.panel, borderColor: C.rule, textStyle: { color: C.ink, fontSize: 13 } },
 };
 export const axis = (extra = {}) => ({
   axisLine: { lineStyle: { color: C.rule } },
   axisTick: { show: false },
   axisLabel: { color: C.muted, fontSize: 12 },
-  splitLine: { lineStyle: { color: "#D5D8D1", type: "dashed" } },
+  splitLine: { lineStyle: { color: "#E2DDD3", type: "dashed" } },
   nameTextStyle: { color: C.muted, fontSize: 12 },
   ...extra,
 });

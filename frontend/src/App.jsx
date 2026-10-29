@@ -7,7 +7,7 @@ import Machine from "./pages/Machine.jsx";
 import Fairness from "./pages/Fairness.jsx";
 import Models from "./pages/Models.jsx";
 import Method from "./pages/Method.jsx";
-import { Notice } from "./components/ui.jsx";
+import { ErrorState } from "./components/ui.jsx";
 
 const PAGES = [
   { id: "story", label: "The story" },
@@ -17,6 +17,7 @@ const PAGES = [
   { id: "models", label: "The models" },
   { id: "method", label: "How it works" },
 ];
+const EVIDENCE_PAGES = PAGES.filter((page) => ["story", "fairness", "models", "method"].includes(page.id));
 
 // Route lives in the URL hash: #/control, #/machine/C-08
 function readHash() {
@@ -48,14 +49,16 @@ export default function App() {
 
   const go = (page, arg) => { window.location.hash = arg ? `/${page}/${arg}` : `/${page}`; };
   const openMachine = (id) => { setMachineId(id); go("machine", id); };
+  const onEvidenceRoute = EVIDENCE_PAGES.some((page) => page.id === route.page);
+  const onDecisionRoute = route.page === "control" || route.page === "machine";
 
   if (fleet.error) {
     return (
       <div className="boot">
-        <Notice title="The app can't reach the plant data">
+        <ErrorState title="The app can't reach the plant data" error={fleet.error} onRetry={fleet.retry}>
           Start the server with <code>run_web.bat</code> (or <code>uvicorn api.main:app</code>) after
-          running the pipeline once with <code>python main.py</code>. Details: {String(fleet.error.message)}
-        </Notice>
+          running the pipeline once with <code>python main.py</code>.
+        </ErrorState>
       </div>
     );
   }
@@ -65,22 +68,30 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a className="brand" href="#/story" aria-label="Home">
-          <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
-            <rect width="32" height="32" rx="6" fill="#1F2328" />
+        <div className="topbar-main">
+          <a className="brand" href="#/control" aria-label="Plant maintenance decision workspace">
+            <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+              <rect width="32" height="32" rx="6" fill="#1E2422" />
             <path d="M6 22l6-8 5 5 9-11" stroke="#F2B705" strokeWidth="3" fill="none" />
-          </svg>
-          <span>Plant maintenance</span>
-        </a>
-        <nav>
-          {PAGES.map((p) => (
-            <a key={p.id} href={`#/${p.id}${p.id === "machine" && machineId ? "/" + machineId : ""}`}
-               className={route.page === p.id ? "active" : ""} aria-current={route.page === p.id ? "page" : undefined}>
-              {p.label}
-            </a>
-          ))}
-        </nav>
-        <span className="sim-flag" title="All data in this demo is simulated">Simulated plant data</span>
+            </svg>
+            <span>Plant maintenance</span>
+          </a>
+          <nav className="primary-nav" aria-label="Primary navigation">
+            <a href="#/control" className={onDecisionRoute ? "active" : ""}
+               aria-current={onDecisionRoute ? "page" : undefined}>Decision</a>
+            <a href="#/story" className={onEvidenceRoute ? "active" : ""}
+               aria-current={onEvidenceRoute ? "page" : undefined}>Evidence</a>
+          </nav>
+          <span className="sim-flag" title="All data in this demo is simulated">Simulated data</span>
+        </div>
+        {onEvidenceRoute && (
+          <nav className="evidence-nav" aria-label="Evidence sections">
+            {EVIDENCE_PAGES.map((page) => (
+              <a key={page.id} href={`#/${page.id}`} className={route.page === page.id ? "active" : ""}
+                 aria-current={route.page === page.id ? "page" : undefined}>{page.label}</a>
+            ))}
+          </nav>
+        )}
       </header>
       <main>
         {route.page === "story" && <Story {...shared} />}

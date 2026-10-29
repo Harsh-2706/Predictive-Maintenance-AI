@@ -5,7 +5,7 @@ import { fmtTime, pct } from "../theme.js";
 import FloorMap, { RiskLegend } from "../components/FloorMap.jsx";
 import Queue from "../components/Queue.jsx";
 import WhyPanel from "../components/WhyPanel.jsx";
-import { CrewSlider, Loading, StrategyPicker } from "../components/ui.jsx";
+import { CrewSlider, ErrorState, Loading, StrategyPicker } from "../components/ui.jsx";
 
 const SPEEDS = [{ label: "1×", ms: 1600 }, { label: "2×", ms: 800 }, { label: "4×", ms: 400 }];
 
@@ -76,15 +76,17 @@ export default function ControlRoom({ fleet, strategy, setStrategy, k, setK, w, 
         <span className="muted small">Shift {w + 1} of {nWin}</span>
       </div>
 
-      {!data ? <Loading what="Scoring the fleet" /> : (
+      {win.error ? <ErrorState title="Couldn't load this shift" error={win.error} onRetry={win.retry}>
+        Try loading the selected review window again.
+      </ErrorState> : !data ? <Loading what="Scoring the fleet" /> : (
         <>
-          <div className="kpis">
+          <div className={`kpis ${truth ? "with-outcomes" : ""}`} aria-label="Shift summary">
             <Kpi n={data.summary.reporting} of={fleet.machines.length} label="machines reporting" />
             <Kpi n={data.summary.high_risk} label="at 50%+ failure risk" />
             <Kpi n={data.summary.new_alerts} label="new in the queue this shift" />
             {truth
               ? <Kpi n={data.summary.caught} of={data.summary.failing_24h} label="machines that really failed within 24 h were in the queue" tone={data.summary.caught < data.summary.failing_24h ? "warn" : "good"} />
-              : <Kpi n={k} label="crew slots this shift" />}
+              : null}
           </div>
 
           <div className="control-grid">
@@ -94,14 +96,16 @@ export default function ControlRoom({ fleet, strategy, setStrategy, k, setK, w, 
             </div>
             <div className="panel queue-panel">
               <h2>Maintenance queue</h2>
-              <Queue queue={data.queue} strategy={strategy} onOpen={openMachine} selected={selected}
-                     onSelect={setSelected} showTruth={truth} />
-              {truth && data.summary.failing_24h > data.summary.caught && (
-                <p className="missed">
-                  Missed: {data.machines.filter((m) => m.fails_24h && !m.in_queue)
-                    .map((m) => `${m.id} (position ${m.rank ?? "–"})`).join(", ")}
-                </p>
-              )}
+              <div className="queue-scroll">
+                <Queue queue={data.queue} strategy={strategy} onOpen={openMachine} selected={selected}
+                       onSelect={setSelected} showTruth={truth} />
+                {truth && data.summary.failing_24h > data.summary.caught && (
+                  <p className="missed">
+                    Missed: {data.machines.filter((m) => m.fails_24h && !m.in_queue)
+                      .map((m) => `${m.id} (position ${m.rank ?? "–"})`).join(", ")}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

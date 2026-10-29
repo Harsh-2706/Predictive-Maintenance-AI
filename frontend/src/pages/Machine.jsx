@@ -4,11 +4,12 @@ import { api } from "../api.js";
 import { useAsync, useDebounced } from "../hooks.js";
 import { C, CLASS, MODEL_NAME, axis, chartBase, fmtTime, pct, sensorName, sensorUnit } from "../theme.js";
 import WhyPanel from "../components/WhyPanel.jsx";
-import { Chart, ClassTag, CrewSlider, Loading, StrategyPicker } from "../components/ui.jsx";
+import { Chart, ClassTag, CrewSlider, ErrorState, Loading, StrategyPicker } from "../components/ui.jsx";
 
 export default function Machine({ fleet, machineId, strategy, setStrategy, k, setK, w, setW, go }) {
   const md = useAsync(() => api.machine(machineId, strategy, k), [machineId, strategy, k]);
   const m = md.data;
+  const isMissingMachine = md.error?.message?.startsWith("404:");
 
   useEffect(() => { echarts.connect("sensors"); }, []);
 
@@ -22,11 +23,14 @@ export default function Machine({ fleet, machineId, strategy, setStrategy, k, se
   }, [m, w, setW]);
 
   const point = m?.timeline.find((t) => t.window === w);
+  const queueStatus = !point ? "No reading in this shift" : point.in_queue
+    ? `Queue position ${point.rank}` : `Rank ${point.rank} · outside queue`;
 
   return (
     <div className="page machine">
       <div className="machine-head">
         <div>
+          <p className="machine-kicker">Machine investigation</p>
           <label className="field machine-pick">
             <span>Machine</span>
             <select value={machineId} onChange={(e) => go("machine", e.target.value)}>
@@ -37,12 +41,6 @@ export default function Machine({ fleet, machineId, strategy, setStrategy, k, se
               ))}
             </select>
           </label>
-          {m && (
-            <p className="machine-meta">
-              <ClassTag cls={m.cls} /> Watched by a {MODEL_NAME[m.model]} model, reporting every{" "}
-              {m.sample_every_min} minutes, consequence weight {m.severity}.
-            </p>
-          )}
         </div>
         <div className="controls">
           <StrategyPicker strategy={strategy} setStrategy={setStrategy} compact />
@@ -50,42 +48,68 @@ export default function Machine({ fleet, machineId, strategy, setStrategy, k, se
         </div>
       </div>
 
-      {!m ? <Loading what={`Loading ${machineId}`} /> : (
+      {md.error ? <ErrorState title={isMissingMachine ? "Machine not found" : "Couldn't load this machine"}
+                                   error={md.error} onRetry={md.retry}>
+        {isMissingMachine ? <>
+          {machineId} is not part of this simulated fleet. <button type="button" className="btn ghost"
+          onClick={() => go("machine", fleet.machines[0].id)}>Open {fleet.machines[0].id}</button>
+        </> : "Try loading the selected machine again."}
+      </ErrorState> : !m ? <Loading what={`Loading ${machineId}`} /> : (
         <>
-          <section className="panel">
+          <section className="panel machine-overview" style={{ "--machine-color": CLASS[m.cls].color }}>
+            <div className="machine-overview-head">
+              <div>
+                <div className="machine-meta"><ClassTag cls={m.cls} /> <span>{MODEL_NAME[m.model]} model</span></div>
+                <h1>{m.id}</h1>
+                <p className="muted small">Reports every {m.sample_every_min} minutes · consequence weight {m.severity}</p>
+              </div>
+              <div className="machine-risk">
+                <span>Selected-shift failure risk</span>
+                <b>{pct(point?.risk)}</b>
+                <small>next 24 hours</small>
+              </div>
+            </div>
+            <div className="machine-facts" aria-label="Selected shift summary">
+              <div><span>Review window</span><b>{point ? fmtTime(point.end) : "No reading"}</b></div>
+              <div><span>Queue status</span><b>{queueStatus}</b></div>
+              <div><span>Reporting</span><b>{point ? "Reporting" : "Not reporting"}</b></div>
+            </div>
+          </section>
+
+          <section className="panel machine-timeline">
             <div className="panel-head">
-              <h2>Failure risk over the test period</h2>
-              <p className="muted small">Click any point to inspect that shift. Drag the bar below to zoom.</p>
+              <h2>Risk and queue history</h2>
+              <p className="muted small">Select a shift to inspect it. Use the control below the chart to zoom.</p>
             </div>
             <Chart height={300} option={riskOption(m, w)}
                    onEvents={{ click: (p) => { const t = m.timeline[p.dataIndex]; if (t) setW(t.window); } }} />
           </section>
 
-          <div className="two-col">
+          <section className="panel machine-sensors">
+            <div className="panel-head">
+              <h2>Sensor history</h2>
+              <p className="muted small">Hourly averages. Dashed lines mark the class baseline; vermilion markers show failures.</p>
+            </div>
+            <div className="sensor-grid">
+              {m.sensors.map((s) => (
+                <Chart key={s.name} group="sensors" height={220} option={sensorOption(m, s, point)} />
+              ))}
+            </div>
+          </section>
+
+          <div className="two-col machine-investigation">
             <section className="panel">
-              <h2>Why the model says {point ? pct(point.risk) : "–"} on {point ? fmtTime(point.end) : "–"}</h2>
+              <h2>What is driving this risk?</h2>
               {point
                 ? <WhyPanel machineId={m.id} cls={m.cls} w={w} />
                 : <p className="muted">No reading in this shift.</p>}
             </section>
             <section className="panel">
-              <h2>What if the readings were different?</h2>
+              <h2>Test a sensor change</h2>
               {point ? <WhatIf m={m} w={w} strategy={strategy} k={k} point={point} />
                      : <p className="muted">Pick a shift where the machine reported.</p>}
             </section>
           </div>
-
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Sensor history</h2>
-              <p className="muted small">Hourly averages. Dashed line is this machine type's normal level; red lines are failures.</p>
-            </div>
-            <div className="sensor-grid">
-              {m.sensors.map((s) => (
-                <Chart key={s.name} group="sensors" height={190} option={sensorOption(m, s, point)} />
-              ))}
-            </div>
-          </section>
         </>
       )}
     </div>
@@ -185,24 +209,27 @@ function WhatIf({ m, w, strategy, k, point }) {
   const debounced = useDebounced(deltas, 200);
   const [res, setRes] = useState(null);
   const [err, setErr] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setErr(null);
     api.whatIf(m.id, { window: w, deltas: debounced, strategy, k })
       .then((r) => { if (alive) { setRes(r); setErr(null); } })
       .catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
-  }, [m.id, w, debounced, strategy, k]);
+  }, [m.id, w, debounced, strategy, k, attempt]);
 
   const gauge = useMemo(() => res && gaugeOption(res.risk, point.risk, CLASS[m.cls].color), [res, point, m.cls]);
+  if (sl.error) return <ErrorState title="Couldn't load sensor controls" error={sl.error} onRetry={sl.retry} />;
   if (!sl.data) return <Loading what="Loading sensors" />;
   const changed = Object.values(deltas).some((v) => v !== 0);
 
   return (
     <div className="whatif">
       <p className="muted small">
-        Shift a sensor as if the change built up over the last two hours. The real {MODEL_NAME[m.model]} model
-        re-scores the machine and the queue is re-ranked.
+        Adjust a sensor delta. The change is modelled across the previous two hours; the trained {MODEL_NAME[m.model]}
+        model then re-scores this shift and re-ranks the queue.
       </p>
       <div className="whatif-body">
         <div className="sliders">
@@ -219,7 +246,8 @@ function WhatIf({ m, w, strategy, k, point }) {
         </div>
         <div className="whatif-result" aria-live="polite">
           {gauge && <Chart height={170} option={gauge} />}
-          {err && <p className="error">{err}</p>}
+          {err && <ErrorState title="Couldn't recalculate this scenario" error={err}
+                              onRetry={() => setAttempt((n) => n + 1)} />}
           {res && (
             <p className="whatif-rank">
               {res.in_queue
@@ -246,7 +274,7 @@ function gaugeOption(risk, actual, color) {
       title: { offsetCenter: [0, "55%"], fontSize: 12, color: C.muted, fontFamily: "Barlow" },
       detail: { offsetCenter: [0, "5%"], fontSize: 34, fontWeight: 700, fontFamily: "Barlow Condensed",
                 color: C.ink, formatter: (v) => `${Math.round(v * 100)}%` },
-      data: [{ value: risk, name: `actual reading: ${Math.round(actual * 100)}%` }],
+      data: [{ value: risk, name: `selected shift: ${Math.round(actual * 100)}%` }],
     }],
   };
 }
