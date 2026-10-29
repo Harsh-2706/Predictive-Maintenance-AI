@@ -1,0 +1,13 @@
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+matplotlib>=3.8
+joblib>=1.3
+pytest>=8.0
+# Web app (React frontend is pre-built in frontend/dist; Node.js only needed to change it)
+fastapi>=0.110
+uvicorn>=0.29
+httpx>=0.27
+# Original Streamlit dashboard
+streamlit>=1.50
+plotly>=5.20
