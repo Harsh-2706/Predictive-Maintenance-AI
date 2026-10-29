@@ -1,0 +1,4 @@
+machine_class,readings,reading_level_alerts,window_snapshots,window_level_alerts,share_of_reading_alerts,share_of_window_alerts
+compressor,6400,1201,1128,216,0.0771,0.225
+motor,66514,10928,2796,456,0.7011,0.475
+pump,19624,3458,1679,288,0.2219,0.3

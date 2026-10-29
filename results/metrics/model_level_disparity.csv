@@ -1,0 +1,3 @@
+split,recall_max_minus_min,recall_worst_class,fnr_max_minus_min,fnr_worst_class,precision_max_minus_min,precision_worst_class,pr_auc_max_minus_min,pr_auc_worst_class,event_recall_max_minus_min,event_recall_worst_class,abs_calibration_gap_max,calibration_worst_class
+test,0.0502,motor,0.0502,motor,0.275,compressor,0.2256,compressor,0.0,compressor,0.1331,compressor
+val,0.0835,compressor,0.0835,compressor,0.2738,compressor,0.2795,compressor,0.0112,motor,0.1062,compressor

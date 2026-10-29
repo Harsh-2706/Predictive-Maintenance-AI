@@ -1,0 +1,4 @@
+machine_class,actual_rate,mean_raw_risk,mean_calibrated_risk,brier_raw,brier_calibrated,brier_improvement_pct
+compressor,0.08,0.2131,0.099,0.0876,0.0414,52.7086
+motor,0.122,0.17,0.1223,0.0459,0.035,23.7259
+pump,0.1097,0.1815,0.1154,0.0532,0.0294,44.785

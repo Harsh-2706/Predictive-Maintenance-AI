@@ -1,0 +1,13 @@
+{
+  "top_k": 8,
+  "review_window_hours": 6,
+  "windows": 95,
+  "machines": 60,
+  "severity_weights": {
+    "motor": 0.7,
+    "pump": 0.9,
+    "compressor": 1.0
+  },
+  "min_slots_per_class": 1,
+  "min_eligible_risk": 0.2
+}
