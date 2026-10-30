@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useAsync } from "../hooks.js";
 import { C, CLASS, CLASSES, MODEL_NAME, axis, chartBase, pct, sensorName } from "../theme.js";
 import { Chart, ErrorState, Loading, Segmented } from "../components/ui.jsx";
+import { ModelCalibrationVisual } from "../components/SectionVisuals.jsx";
 
 const PERFORMANCE = {
   recall: { label: "Recall", detail: "failures the model alerted before" },
@@ -29,9 +30,14 @@ export default function Models() {
 
   return (
     <div className="page models">
-      <p className="models-kicker">Model evidence</p>
-      <h1>Trust the risk, not just the score.</h1>
-      <p className="lede">Three machine-specific models. Calibrated probabilities. One shared maintenance decision.</p>
+      <header className="section-intro models-intro">
+        <div>
+          <p className="models-kicker">Model evidence</p>
+          <h1>Trust the risk, not just the score.</h1>
+          <p className="lede">Three machine-specific models. Calibrated probabilities. One shared maintenance decision.</p>
+        </div>
+        <ModelCalibrationVisual />
+      </header>
 
       <section className="models-lineup" aria-labelledby="lineup-title">
         <div className="models-section-head">

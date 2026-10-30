@@ -1,15 +1,15 @@
 // Single source of colour and wording. Safety yellow = "in the maintenance queue",
 // signal red = "failure". Nothing else uses those two colours.
 export const C = {
-  bg: "#F6F2EA",
-  panel: "#FFFCF6",
-  ink: "#1E2422",
-  muted: "#5D625F",
-  rule: "#D8D1C5",
+  bg: "#EEE8DE",
+  panel: "#FAF6EF",
+  ink: "#242925",
+  muted: "#60645E",
+  rule: "#D5CCBF",
   safety: "#F2B705",
   signal: "#D94A38",
   cobalt: "#3346C7",
-  calm: "#E2DDD3",
+  calm: "#E7DFD3",
 };
 
 export const CLASS = {
@@ -35,7 +35,7 @@ export const MODEL_NAME = {
 
 // Risk 0..1 -> fill colour: calm grey, through amber, to red.
 export function riskColor(r) {
-  if (r == null) return "#BFC3BC";
+  if (r == null) return C.calm;
   const stops = [
     [0, [226, 221, 211]],
     [0.15, [239, 218, 139]],
@@ -74,7 +74,7 @@ export const axis = (extra = {}) => ({
   axisLine: { lineStyle: { color: C.rule } },
   axisTick: { show: false },
   axisLabel: { color: C.muted, fontSize: 12 },
-  splitLine: { lineStyle: { color: "#E2DDD3", type: "dashed" } },
+  splitLine: { lineStyle: { color: C.calm, type: "dashed" } },
   nameTextStyle: { color: C.muted, fontSize: 12 },
   ...extra,
 });

@@ -8,6 +8,7 @@ import Fairness from "./pages/Fairness.jsx";
 import Models from "./pages/Models.jsx";
 import Method from "./pages/Method.jsx";
 import { ErrorState } from "./components/ui.jsx";
+import plantMaintenanceLogo from "./assets/plant-maintenance-logo.png";
 
 const PAGES = [
   { id: "story", label: "The story" },
@@ -32,6 +33,7 @@ export default function App() {
   const [k, setK] = useState(8);
   const [w, setW] = useState(null);
   const [machineId, setMachineId] = useState(null);
+  const [simInfoOpen, setSimInfoOpen] = useState(false);
 
   useEffect(() => {
     const on = () => setRoute(readHash());
@@ -46,6 +48,12 @@ export default function App() {
     }
   }, [fleet.data, w]);
   useEffect(() => { window.scrollTo(0, 0); }, [route.page]);
+  useEffect(() => {
+    if (!simInfoOpen) return undefined;
+    const closeOnEscape = (event) => { if (event.key === "Escape") setSimInfoOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [simInfoOpen]);
 
   const go = (page, arg) => { window.location.hash = arg ? `/${page}/${arg}` : `/${page}`; };
   const openMachine = (id) => { setMachineId(id); go("machine", id); };
@@ -69,12 +77,8 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="topbar-main">
-          <a className="brand" href="#/control" aria-label="Plant maintenance decision workspace">
-            <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
-              <rect width="32" height="32" rx="6" fill="#1E2422" />
-            <path d="M6 22l6-8 5 5 9-11" stroke="#F2B705" strokeWidth="3" fill="none" />
-            </svg>
-            <span>Plant maintenance</span>
+          <a className="brand" href="#/control" aria-label="Plant Maintenance home">
+            <img className="brand-logo" src={plantMaintenanceLogo} alt="Plant Maintenance" />
           </a>
           <nav className="primary-nav" aria-label="Primary navigation">
             <a href="#/control" className={onDecisionRoute ? "active" : ""}
@@ -82,7 +86,36 @@ export default function App() {
             <a href="#/story" className={onEvidenceRoute ? "active" : ""}
                aria-current={onEvidenceRoute ? "page" : undefined}>Evidence</a>
           </nav>
-          <span className="sim-flag" title="All data in this demo is simulated">Simulated data</span>
+          <div className="sim-source">
+            <button type="button" className="sim-flag" aria-label="About simulated data" aria-haspopup="dialog"
+                    aria-expanded={simInfoOpen} aria-controls="simulation-note"
+                    onClick={() => setSimInfoOpen((open) => !open)}>
+              <span className="sim-flag-label">Simulated data</span><span aria-hidden="true">i</span>
+            </button>
+            {simInfoOpen && (
+              <section id="simulation-note" className="simulation-note" role="dialog" aria-label="About this simulated dataset">
+                <div className="simulation-note-head">
+                  <div>
+                    <p>Research dataset</p>
+                    <h2>Simulation, not live plant data</h2>
+                  </div>
+                  <button type="button" className="simulation-close" onClick={() => setSimInfoOpen(false)} aria-label="Close simulated data details">×</button>
+                </div>
+                <p>
+                  This prototype simulates <b>{fleet.data.machines.length} machines</b> across motors, pumps, and compressors.
+                  Failure events and six-hour maintenance review windows are generated for controlled experimentation.
+                </p>
+                <ul>
+                  {fleet.data.classes.map((item) => (
+                    <li key={item.id}><b>{item.count} {item.id}s</b> report every {item.sample_every_min} minutes.</li>
+                  ))}
+                </ul>
+                <p>
+                  Predictions and maintenance queues are computed by the project’s trained models, calibration, and ranking pipeline—but this is not a live industrial deployment.
+                </p>
+              </section>
+            )}
+          </div>
         </div>
         {onEvidenceRoute && (
           <nav className="evidence-nav" aria-label="Evidence sections">

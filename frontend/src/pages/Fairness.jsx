@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useAsync } from "../hooks.js";
 import { C, CLASS, CLASSES, STRATEGY, STRATEGIES, axis, chartBase, pct } from "../theme.js";
 import { Chart, ErrorState, Loading, Segmented } from "../components/ui.jsx";
+import { FairnessAllocationVisual } from "../components/SectionVisuals.jsx";
 
 export default function Fairness({ k, setK, strategy, setStrategy }) {
   const fair = useAsync(() => api.fairness(), []);
@@ -19,11 +20,16 @@ export default function Fairness({ k, setK, strategy, setStrategy }) {
 
   return (
     <div className="page fairness">
-      <p className="fairness-kicker">Maintenance-policy experiment</p>
-      <h1>Which failures reach the crew?</h1>
-      <p className="lede">
-        Compare how crew capacity and ranking strategy change captured and missed failures across motors, pumps, and compressors.
-      </p>
+      <header className="section-intro fairness-intro">
+        <div>
+          <p className="fairness-kicker">Maintenance-policy experiment</p>
+          <h1>Which failures reach the crew?</h1>
+          <p className="lede">
+            Compare how crew capacity and ranking strategy change captured and missed failures across motors, pumps, and compressors.
+          </p>
+        </div>
+        <FairnessAllocationVisual capacity={k} focus={focus} />
+      </header>
 
       <section className="panel fairness-primary">
         <div className="fairness-primary-head">

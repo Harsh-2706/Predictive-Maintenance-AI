@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useAsync } from "../hooks.js";
 import { CLASS, CLASSES, MODEL_NAME, STRATEGY, pct } from "../theme.js";
 import { ErrorState, Loading } from "../components/ui.jsx";
+import { MethodPipelineVisual } from "../components/SectionVisuals.jsx";
 
 const ARCHITECTURE = [
   { n: "01", title: "Sensor simulation", text: "Class-specific sensor streams arrive at 15, 30, or 60-minute cadences." },
@@ -36,9 +37,14 @@ export default function Method({ fleet }) {
 
   return (
     <div className="page method">
-      <p className="method-kicker">Methodology &amp; research transparency</p>
-      <h1>From sensor stream to maintenance decision.</h1>
-      <p className="lede">A transparent pipeline turns machine-specific failure risk into one capacity-constrained queue—while keeping probabilities, assumptions, and policy choices separate.</p>
+      <header className="section-intro method-intro">
+        <div>
+          <p className="method-kicker">Methodology &amp; research transparency</p>
+          <h1>From sensor stream to maintenance decision.</h1>
+          <p className="lede">A transparent pipeline turns machine-specific failure risk into one capacity-constrained queue—while keeping probabilities, assumptions, and policy choices separate.</p>
+        </div>
+        <MethodPipelineVisual />
+      </header>
 
       <section className="method-architecture" aria-labelledby="architecture-title">
         <div className="method-section-head">

@@ -41,10 +41,6 @@ export default function ControlRoom({ fleet, strategy, setStrategy, k, setK, w, 
       <div className="control-head">
         <div>
           <h1>Control room</h1>
-          <p className="lede">
-            Every 6 hours the three models score each machine's latest readings. The queue on the right is what the
-            maintenance lead acts on. Press play to watch the plant run.
-          </p>
         </div>
         <div className="controls">
           <StrategyPicker strategy={strategy} setStrategy={setStrategy} />

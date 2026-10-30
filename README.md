@@ -26,6 +26,24 @@ Both read the same pipeline outputs, so every number matches.
 
 ---
 
+## Application at a glance
+
+FairQueue turns class-specific failure estimates into a transparent, six-hour maintenance decision: models estimate failure risk, calibration makes probabilities comparable, and the selected policy allocates limited crew capacity. The app keeps the evidence, queue, and simulation limits visible together.
+
+## Web application screenshots
+
+The gallery is intentionally awaiting genuine captures from the current running application. No verified UI screenshots were present in the repository, and no mockups or stock imagery have been substituted. Capture instructions and the exact filenames are in [docs/screenshots/README.md](docs/screenshots/README.md).
+
+| View | Planned asset | What it demonstrates |
+|---|---|---|
+| Control Room | `docs/screenshots/control-room.png` | The live, capacity-constrained maintenance queue. |
+| Fairness Lab | `docs/screenshots/fairness-lab.png` | Strategy and crew-capacity trade-offs by machine class. |
+| Models & Calibration | `docs/screenshots/models-calibration.png` | Model evidence and calibrated failure probabilities. |
+| Machine Detail | `docs/screenshots/machine-detail.png` | Sensor history, explanation, and live what-if re-ranking. |
+| Method | `docs/screenshots/method.png` | The six-stage predictive-maintenance pipeline. |
+
+---
+
 ## 👉 Teammate: start here
 
 The platform is built, tested and running. **Your part is the research logbook,
