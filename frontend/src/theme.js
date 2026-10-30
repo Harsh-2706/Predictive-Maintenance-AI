@@ -23,7 +23,7 @@ export const STRATEGY = {
   S1_raw: { short: "Raw scores", long: "Rank by each model's raw score", color: "#8D938F" },
   S2_calibrated: { short: "Calibrated only", long: "Rank by calibrated failure risk", color: "#6682B7" },
   S3_risk_priority: { short: "Risk × consequence", long: "Calibrated risk × consequence × data freshness", color: "#3346C7" },
-  S4_class_fair: { short: "With class safeguard", long: "Risk × consequence, plus a guaranteed slot per machine type", color: "#A86818" },
+  S4_class_fair: { short: "With class safeguard", long: "Risk × consequence, plus eligible class coverage", color: "#A86818" },
 };
 export const STRATEGIES = Object.keys(STRATEGY);
 

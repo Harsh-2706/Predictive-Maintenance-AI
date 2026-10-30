@@ -529,8 +529,8 @@ meeting and open each page once, so everything is loaded. Never run the pipeline
 | 10–11 | **Fairness lab** | Switch to *Compressors*, toggle rules | "We measure fairness per machine type, with statistical confidence." |
 | 11–12 | **How it works**, limits | | "Simulated data; next step is a pilot on one line's historian and maintenance records." |
 
-If someone asks "where is the AI?", go to **How it works → What is AI here**, then
-show the what-if slider.
+If someone asks "where is the AI?", go to **How it works → Multi-machine modelling**,
+then show the what-if slider.
 
 ---
 
