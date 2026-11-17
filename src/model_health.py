@@ -24,11 +24,12 @@ watch the PSI react.
 from __future__ import annotations
 
 import numpy as np
+import joblib
+import numpy as np
 import pandas as pd
 from sklearn.metrics import brier_score_loss
 
 import config
-from src.data_preprocessing import load_processed
 
 PSI_BINS = 10
 PSI_WATCH, PSI_DRIFT = 0.10, 0.25
@@ -58,15 +59,35 @@ def psi(ref_share: np.ndarray, cur_share: np.ndarray) -> float:
 class HealthMonitor:
     """Holds the training reference once; reports drift for the test period quickly."""
 
-    def __init__(self, test_preds: pd.DataFrame | None = None, val_preds: pd.DataFrame | None = None):
-        self.ref, self.cur = {}, {}
-        for cls, spec in config.MACHINE_CLASSES.items():
-            df = load_processed(cls)
-            self.ref[cls] = {s: bin_edges(df.loc[df["split"] == "train", s].to_numpy()) for s in spec["sensors"]}
-            self.ref[cls] = {s: (e, shares(df.loc[df["split"] == "train", s].to_numpy(), e))
-                             for s, e in self.ref[cls].items()}
-            self.cur[cls] = df.loc[df["split"] == "test", ["timestamp"] + spec["sensors"]].reset_index(drop=True)
-        self.test_preds, self.val_preds = test_preds, val_preds
+    def __init__(self, test_preds: pd.DataFrame | None = None,
+                 val_preds: pd.DataFrame | None = None):
+        artifact_path = config.MODELS_DIR / "health_artifact.pkl"
+
+        if not artifact_path.exists():
+            raise FileNotFoundError(
+                f"Health artifact missing: {artifact_path}. "
+                "Run python -m scripts.build_health_artifact first."
+            )
+
+        artifact = joblib.load(artifact_path)
+
+        self.ref = {}
+        self.cur = {}
+
+        for cls, data in artifact["classes"].items():
+            self.ref[cls] = {
+                sensor: (
+                    data["reference"][sensor]["edges"],
+                    data["reference"][sensor]["shares"],
+                )
+                for sensor in data["sensors"]
+            }
+
+            self.cur[cls] = data["test"].copy()
+
+        self.test_preds = test_preds
+        self.val_preds = val_preds
+
         start = min(c["timestamp"].min() for c in self.cur.values())
         self.start = start.normalize()
 
