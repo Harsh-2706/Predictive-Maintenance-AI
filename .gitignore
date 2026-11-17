@@ -24,3 +24,6 @@ frontend/node_modules/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Technician feedback recorded by the web app (local to each install)
+data/feedback/
