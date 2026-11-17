@@ -1,0 +1,4 @@
+machine_class,readings,mae_h,naive_mae_h,mae_last24_h,naive_mae_last24_h,within_6h_last24,bias_last24_h,coverage_80,coverage_80_last24,mean_range_width_h
+motor,66514,4.924,13.153,8.2074,60.0286,0.5549,5.7238,0.8831,0.7015,14.5044
+pump,19624,4.0804,11.8661,8.3093,60.1372,0.5314,5.5679,0.922,0.7557,14.5927
+compressor,6400,4.7796,8.4623,18.8961,59.9916,0.2305,17.9315,0.9377,0.6211,17.1427

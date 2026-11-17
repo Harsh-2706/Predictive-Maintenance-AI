@@ -1,0 +1,13 @@
+approach,machine_class,inspections,recall_at_k,precision_at_k,wasted_visits,failure_events,events_caught,events_missed,event_catch_rate,median_warning_h,days
+reactive,compressor,0,0.0,0.0,0,22,0,22,0.0,,23.75
+reactive,motor,0,0.0,0.0,0,86,0,86,0.0,,23.75
+reactive,pump,0,0.0,0.0,0,48,0,48,0.0,,23.75
+schedule,compressor,155,0.1778,0.1032,139,22,16,6,0.7273,14.3508,23.75
+schedule,motor,381,0.1232,0.1102,339,86,39,47,0.4535,12.0222,23.75
+schedule,pump,210,0.1075,0.0952,190,48,20,28,0.4167,10.044,23.75
+threshold,compressor,23,0.1111,0.4348,13,22,8,14,0.3636,17.7118,23.75
+threshold,motor,371,0.7595,0.6981,112,86,86,0,1.0,17.2094,23.75
+threshold,pump,138,0.5269,0.7101,40,48,46,2,0.9583,16.0074,23.75
+ai,compressor,159,0.8556,0.4843,82,22,22,0,1.0,19.5749,23.75
+ai,motor,375,0.8094,0.736,99,86,86,0,1.0,18.1406,23.75
+ai,pump,226,0.8495,0.6991,68,48,48,0,1.0,19.42,23.75

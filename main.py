@@ -8,7 +8,10 @@ End-to-end pipeline entry point.
     python main.py --stage predict
     python main.py --stage evaluate
     python main.py --stage fusion
-    python main.py --stage models  # simulate..evaluate only (skip fusion)
+    python main.py --stage rul        # remaining-useful-life models
+    python main.py --stage baselines  # AI vs alarm limits / fixed schedule / run-to-failure
+    python main.py --stage health     # data drift + weekly model performance
+    python main.py --stage models  # simulate..evaluate only (skip fusion and later)
 """
 import argparse
 import time
@@ -19,7 +22,7 @@ import config
 from src import data_loader, data_preprocessing, data_simulator, evaluation, predict, train_models
 
 MODEL_STAGES = ["simulate", "preprocess", "train", "predict", "evaluate"]
-ALL_STAGES = MODEL_STAGES + ["fusion"]
+ALL_STAGES = MODEL_STAGES + ["fusion", "rul", "baselines", "health"]
 
 
 def stage_simulate():
@@ -72,9 +75,45 @@ def stage_fusion():
     print(out["per_class"].round(3).to_string(index=False))
 
 
+def stage_rul():
+    from src import rul
+    _, metrics = rul.run_rul()
+    print("Remaining useful life (test set, hours; target capped at "
+          f"{rul.RUL_CAP_H:g} h):")
+    print(metrics.round(2).to_string(index=False))
+
+
+def stage_baselines():
+    from src import baselines
+    out = baselines.run_baselines()
+    cols = ["approach", "inspections", "recall_at_k", "precision_at_k", "events_caught",
+            "failure_events", "median_warning_h", "ai_recall_gain", "ai_recall_gain_ci_low",
+            "ai_recall_gain_ci_high"]
+    print(f"Same crew (top-{config.TOP_K} per {config.REVIEW_WINDOW_HOURS} h), test period:")
+    print(out["comparison"][cols].round(3).to_string(index=False))
+    sv = baselines.savings(out["comparison"])
+    print("\nMonthly cost with the example costs (INR; edit them in the web app):")
+    print(sv["rows"][["approach", "breakdowns", "total", "saving_vs_reactive", "saving_pct"]]
+          .round(0).to_string(index=False))
+
+
+def stage_health():
+    from src import fusion_engine, model_health, predict
+    import joblib
+    cal = joblib.load(fusion_engine.CALIBRATORS_PATH)
+    test = fusion_engine.apply_calibration(predict.load_predictions("test"), cal)
+    mon = model_health.HealthMonitor(test, predict.load_predictions("val"))
+    drift = mon.drift()
+    drift["weekly"].to_csv(config.METRICS_DIR / "drift_psi.csv", index=False)
+    mon.weekly_performance().round(4).to_csv(config.METRICS_DIR / "weekly_performance.csv", index=False)
+    print("Worst weekly PSI per sensor (training period vs each test week):")
+    print(drift["worst"][["machine_class", "sensor", "week", "psi", "status"]].to_string(index=False))
+
+
 STAGES = {
     "simulate": stage_simulate, "preprocess": stage_preprocess, "train": stage_train,
     "predict": stage_predict, "evaluate": stage_evaluate, "fusion": stage_fusion,
+    "rul": stage_rul, "baselines": stage_baselines, "health": stage_health,
 }
 
 

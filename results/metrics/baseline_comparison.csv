@@ -1,0 +1,5 @@
+approach,description,inspections,recall_at_k,precision_at_k,wasted_visits,failure_events,events_caught,events_missed,event_catch_rate,median_warning_h,days,ai_recall_gain,ai_recall_gain_ci_low,ai_recall_gain_ci_high
+reactive,Run to failure (no predictive maintenance),0,0.0,0.0,0,156,0,156,0.0,,23.75,0.8282,0.8026,0.8567
+schedule,Fixed-rotation preventive inspections,746,0.1264,0.1046,668,156,75,81,0.4808,12.0222,23.75,0.7018,0.6687,0.7388
+threshold,Sensor alarm limits (3 sigma),532,0.5948,0.6898,165,156,140,16,0.8974,16.4117,23.75,0.2334,0.1952,0.2761
+ai,AI: calibrated risk x consequence x freshness,760,0.8282,0.6724,249,156,156,0,1.0,18.8676,23.75,,,
