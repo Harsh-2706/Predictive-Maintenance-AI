@@ -64,7 +64,7 @@ extended testing, enhancements, and rehearsing the demo.** Follow these steps in
 4. Double-click **`run_all.bat`**. It sets up Python, installs everything, trains the
    models, runs all tests, and opens the web app. The first run takes 10–15 minutes.
 5. **Check it worked:**
-   - `run_log.txt` ends with `58 passed` and `Tests passed.`
+   - `run_log.txt` ends with `75 passed` and `Tests passed.`
    - The browser shows the web app at http://localhost:8000.
    - The "Story" page says *60 machines, 95 six-hour shifts and 156 real failures*.
 
@@ -91,7 +91,7 @@ extended testing, enhancements, and rehearsing the demo.** Follow these steps in
 | 2 | **Rehearse the demo** on the presentation laptop and projector | web app | You can run the 12-minute script in §7 without notes; anything clipped or unreadable on the projector is fixed. |
 | 3 | **Extended testing** | `tests/`, see [§11](#11-for-the-next-developer-testing-plan) | Each item in §11 has a test or a written result; `python -m pytest -q` passes; CI is green. |
 | 4 | **Seed-robustness experiment** (enhancement #1) | new `src/robustness.py` | A table of mean ± std of the headline numbers over 5 seeds, added to the report and logbook. |
-| 5 | **Cost view** and **editable consequence weights** (enhancements #2, #3) | `api/`, `frontend/src/pages/` | A user can enter ₹/hour per machine type and see the queue and expected cost change; inputs are clearly labelled as assumptions. |
+| 5 | **Editable consequence weights** (enhancement #3). The savings calculator is done (§4.9). | `api/`, `frontend/src/pages/` | A user can enter ₹/hour per machine type and see the queue re-rank; inputs are clearly labelled as assumptions. |
 | 6 | Other enhancements | [§12](#12-for-the-next-developer-enhancement-backlog) | As agreed with the team. |
 
 ### Step 4: How to work in this repo
@@ -167,6 +167,23 @@ per window. All numbers come from `python main.py` (seed 42) and are reproducibl
 | **S3 calibrated × severity × freshness** | 0.828 (0.803–0.857) | 0.672 | 0.809 | 0.856 |
 | S4 = S3 + class safeguard | 0.823 (0.796–0.852) | 0.668 | 0.804 | 0.856 |
 
+4. **The AI beats what plants do today** (same crew of 8 per shift, same test days;
+   `results/metrics/baseline_comparison.csv`):
+
+| Approach | Failures caught before breakdown | Useful crew visits | Typical warning |
+|---|---|---|---|
+| Run to failure | 0 / 156 | – | – |
+| Fixed inspection schedule | 75 / 156 | 10.5% | 12 h |
+| Sensor alarm limits (±3σ) | 140 / 156 (compressors only 8 / 22) | 69.0% | 16 h |
+| **AI (S3)** | **156 / 156** | 67.2% | **19 h** |
+
+   The AI reaches **+23 points** more at-risk machine-shifts than alarm limits (95% CI
+   +19.5 to +27.6). With example costs, monthly maintenance cost is 70% lower than running
+   to failure (the savings calculator takes the plant's own figures).
+5. **Remaining useful life:** in the last 24 h before a failure the estimate is off by
+   about 8 h for motors and pumps (19 h for compressors), against 60 h for a naive guess
+   (`results/metrics/rul_metrics.csv`).
+
 ### Where the machine learning is
 
 | Step | ML or rule? | Where | Runs live in the web app? |
@@ -175,6 +192,9 @@ per window. All numbers come from `python main.py` (seed 42) and are reproducibl
 | Calibration: re-scales each model's scores into real probabilities | **ML (isotonic regression)** | `src/fusion_engine.py` | **Yes**: applied to every live score |
 | Sensor importance: which sensor each model relies on | ML analysis (grouped permutation importance) | `api/service.py` | Computed once at startup, then cached |
 | Priority = calibrated risk × consequence × freshness, plus the class safeguard | **Rule**, kept transparent on purpose | `src/fusion_engine.py` | Yes, re-ranked live for any crew size and rule |
+| Remaining useful life: hours to failure with an 80% range (median + 10th/90th-percentile gradient-boosting regressors per class) | **ML (supervised regression)** | `src/rul.py` | Shown per machine; recomputed live for uploaded files |
+| Scoring an uploaded sensor file | ML (same trained models + calibration + RUL) | `src/batch_scoring.py` | **Yes**, on every upload |
+| Drift detection (Population Stability Index per sensor and on model scores) | Statistical monitoring | `src/model_health.py` | **Yes**, including a simulated sensor fault |
 
 The API test `test_live_model_reproduces_pipeline_predictions` checks that the live
 model in the web app gives exactly the same scores as the pipeline.
@@ -206,7 +226,7 @@ py -m venv .venv
 .\.venv\Scripts\Activate.ps1          # if blocked: .venv\Scripts\activate.bat in cmd
 pip install -r requirements.txt
 python main.py                        # full pipeline, ~4–6 min on a laptop
-python -m pytest -q                   # expect: 58 passed
+python -m pytest -q                   # expect: 75 passed
 python -m uvicorn api.main:app --port 8000   # web app -> http://localhost:8000
 streamlit run dashboard/app.py               # Streamlit -> http://localhost:8501
 ```
@@ -226,7 +246,10 @@ python main.py --stage train        # models/*.pkl
 python main.py --stage predict      # results/predictions/predictions_{val,test}.csv
 python main.py --stage evaluate     # model-level metrics + figures
 python main.py --stage fusion       # calibration, 4 strategies, fairness, figures (~1 min)
-python main.py --stage models       # simulate..evaluate (everything except fusion)
+python main.py --stage rul          # remaining-useful-life models + metrics (~30 s)
+python main.py --stage baselines    # AI vs alarm limits / fixed schedule / run to failure
+python main.py --stage health       # drift (PSI) + weekly performance
+python main.py --stage models       # simulate..evaluate (everything except fusion and later)
 ```
 
 `data/` and `models/` are **not** in git (about 250 MB). `python main.py` regenerates
@@ -246,9 +269,10 @@ after cloning, once `main.py` has run.
 | Alert manager (review windows, one snapshot per machine, new/ongoing) | ✅ Done |
 | Fusion engine: calibration + 4 ranking strategies | ✅ Done |
 | Fusion-level fairness: recall@k per class, buried alerts, bootstrap CIs, capacity sensitivity | ✅ Done |
-| Web app: FastAPI backend with live model scoring + React frontend (6 pages) | ✅ Done |
+| Web app: FastAPI backend with live model scoring + React frontend (9 pages) | ✅ Done |
 | Streamlit dashboard (original, 5 tabs) | ✅ Kept as second frontend |
-| Tests (58) + CI workflow | ✅ Done |
+| Upgrades v1.1: baseline comparison, savings calculator, remaining useful life, CSV scoring, model health (drift), technician feedback | ✅ Done, see [§4.9](#49-upgrades-v11-ai-vs-today-savings-remaining-life-your-data-model-health) |
+| Tests (75) + CI workflow | ✅ Done |
 | Technical report with real numbers | ✅ `report/project_report.md` |
 | **Research logbook** | ⏳ **Teammate** — template + evidence map in `research/research_logbook.md` |
 | **Extended testing** | ⏳ **Teammate** — see [§11](#11-for-the-next-developer-testing-plan) |
@@ -256,8 +280,8 @@ after cloning, once `main.py` has run.
 | **Rehearse the demo on the presentation laptop and projector** | ⏳ **Teammate** — pages were checked at 1440 px and phone width; check on the actual screen |
 
 **First 30 minutes for the next developer:**
-1. Clone, run `run_all.bat` (or the steps above). Confirm `58 passed` in `run_log.txt`.
-2. Open the web app and click through all 6 pages, using the demo script in [§7](#7-demo-script-for-the-industry-review).
+1. Clone, run `run_all.bat` (or the steps above). Confirm `75 passed` in `run_log.txt`.
+2. Open the web app and click through all 9 pages, using the demo script in [§7](#7-demo-script-for-the-industry-review).
 3. Read, in order: §4 below → `config.py` → `src/fusion_engine.py` docstring → `report/project_report.md`.
 4. Pick tasks from §11 and §12. Work on a branch; CI runs on every push.
 
@@ -364,6 +388,13 @@ ranking and serves JSON:
 | `GET /api/machine/{id}/explain/{w}` | per-sensor drivers: risk if that sensor were at its normal level | **yes** |
 | `POST /api/machine/{id}/what-if` | `{window, deltas:{sensor: change}}` → new risk and new queue position | **yes** |
 | `GET /api/story`, `/calibration`, `/fairness`, `/models` | headline numbers, reliability curves, fairness tables, model cards + sensor importance | |
+| `GET /api/baselines` | AI vs alarm limits, fixed schedule, run to failure (overall + per class) | |
+| `POST /api/savings` | plant costs (₹) → monthly/quarterly/yearly cost per approach and saving | computes live |
+| `GET /api/rul` | remaining-useful-life accuracy per class | |
+| `POST /api/score-csv?k=` | upload a sensor CSV → risk, remaining life and crew queue per machine | **yes** |
+| `GET /api/sample-csv?window=` | 12 h of raw readings from all machines, ready to upload | |
+| `GET /api/health/model?inject_class=&inject_sensor=&inject_pct=` | weekly PSI per sensor, score drift, weekly recall; optional simulated sensor fault | computes live |
+| `POST /api/machine/{id}/feedback`, `GET /api/feedback` | record / list what the crew found (fault found, no fault, not checked) | |
 
 Interactive API docs are at http://localhost:8000/docs.
 
@@ -388,6 +419,12 @@ works offline at the venue.
 | Fairness lab | Recall vs crew size per machine type and rule, share of crew time vs share of failures, significance chart | rule toggles, machine-type switch, crew slider |
 | The models | Model cards (recall, precision, PR-AUC, confusion), what each model listens to, calibration curves, data-rate effect | raw/calibrated toggle |
 | How it works | Pipeline, priority rule, test protocol, ML vs rules, limits | |
+| AI vs today | AI against alarm limits, fixed schedule, run to failure; per-class catch; **savings calculator** in ₹ | cost inputs, period |
+| Score your data | Upload a CSV (or the sample) → ranked crew queue with risk and time left | file upload, crew size |
+| Model health | Weekly drift grid per sensor, weekly recall, technician feedback log | simulate a faulty sensor (type, sensor, ±%) |
+
+Machine detail also shows the **remaining-useful-life chart** (estimate + 80% range) and a
+form to **record the inspection result**. The control-room queue shows "~N h left".
 
 Design rules: safety yellow means **only** "in the maintenance queue", signal red means
 **only** "failure". Machine-type colours are fixed: motor blue, pump green, compressor
@@ -414,6 +451,60 @@ npm run build          # writes frontend/dist; COMMIT dist so others can run wit
 The sidebar has the strategy, the review window, and an **evaluation mode** toggle
 that reveals ground truth (which machines really failed). It defaults to S3.
 
+### 4.9 Upgrades (v1.1): AI vs today, savings, remaining life, your data, model health
+
+All five run in the pipeline (`python main.py`), are served by the API and have tests in
+`tests/test_upgrades.py`.
+
+**Baselines (`src/baselines.py`).** Same crew (8 per 6 h shift), same test windows:
+- *Run to failure*: no predictive inspections.
+- *Fixed schedule*: the crew rotates through the fleet in machine-id order, 8 a shift.
+- *Alarm limits*: a machine alarms when its latest reading of any sensor is more than 3σ
+  from its healthy training level; the crew visits up to 8 alarms, largest first.
+- *AI*: the S3 queue.
+
+A failure counts as caught if the machine was visited in a shift ending in the 24 h
+before it. We assume the visit finds the fault, which is generous to the baselines. A
+paired bootstrap over shifts gives the CI of the AI's gain.
+
+**Savings calculator.** `baselines.savings()`: caught failure → planned repair
+(planned downtime × ₹/hour + planned repair cost); missed failure → breakdown (breakdown
+downtime × ₹/hour + emergency repair cost); every visit → inspection cost. The test-period
+outcomes are scaled to a month, quarter or year. Default costs in `DEFAULT_COSTS` are
+**placeholders**; the simulated plant fails far more often than a real one, so quote the
+percentage, not the rupee amount.
+
+**Remaining useful life (`src/rul.py`).** Per class: a gradient-boosting regressor for
+the median (absolute-error loss) plus 10th and 90th percentile models (quantile loss)
+on the same 19 features, trained on the train split. Target = hours to failure capped at
+72 h (piecewise-linear RUL, standard on NASA C-MAPSS).
+
+| Class | Error, last 24 h | Naive guess | Within ±6 h | True value in 80% range | Bias |
+|---|---|---|---|---|---|
+| Motor | 8.2 h | 60.0 h | 55% | 70% | +5.7 h |
+| Pump | 8.3 h | 60.1 h | 53% | 76% | +5.6 h |
+| Compressor | 18.9 h | 60.0 h | 23% | 62% | +17.9 h |
+
+The range is narrower than its nominal 80% close to failure, and the estimate is
+optimistic for compressors (noisiest sensors). Say so; rely on the risk score there.
+
+**Score your data (`src/batch_scoring.py`).** Validates the CSV (required columns, known
+classes, sensors per class, readable timestamps, size limits), builds the same features,
+and runs model → calibration → RUL → priority → queue. Freshness is measured against the
+newest timestamp in the file. Test `test_uploaded_csv_reproduces_live_queue` checks that
+uploading the sample file for a shift gives exactly the live queue for that shift.
+
+**Model health (`src/model_health.py`).** PSI per sensor per week against the training
+period (< 0.10 stable, 0.10–0.25 watch, > 0.25 drift), PSI of the model's own scores, and
+weekly recall per class. On the test period every sensor is stable (max PSI 0.017). The
+page can inject a sensor fault (e.g. pump flow reading 8% low from week 3) to show the
+alarm firing.
+
+**Technician feedback (`src/feedback.py`).** The machine page records *fault found / no
+fault / not checked* plus a note into `data/feedback/feedback.csv` (not in git).
+`feedback.summary()` gives confirmed precision; `feedback.training_labels()` exports
+confirmed outcomes as labels for the next retraining run.
+
 ---
 
 ## 5. Repository map
@@ -434,12 +525,17 @@ predictive-maintenance/
 │   ├── predict.py             prediction contract (CONTRACT_COLUMNS)
 │   ├── alert_manager.py       review windows, snapshots, new/ongoing, alert volume
 │   ├── fusion_engine.py       calibration, priority, S1–S4 ranking, experiment runner
-│   └── evaluation.py          model-level + fusion-level metrics, bootstrap, figures
+│   ├── evaluation.py          model-level + fusion-level metrics, bootstrap, figures
+│   ├── baselines.py           AI vs alarm limits / fixed schedule / run to failure + savings
+│   ├── rul.py                 remaining-useful-life models (median + 80% range)
+│   ├── batch_scoring.py       score an uploaded sensor CSV with the trained models
+│   ├── model_health.py        drift (PSI) and weekly performance
+│   └── feedback.py            technician feedback store + training labels
 ├── api/
 │   ├── service.py             loads models; live explain / what-if / ranking; analysis data
 │   └── main.py                FastAPI routes + serves the built React app
 ├── frontend/
-│   ├── src/pages/             Story, ControlRoom, Machine, Fairness, Models, Method
+│   ├── src/pages/             Story, ControlRoom, Machine, Fairness, Models, Method, Compare, Upload, Health
 │   ├── src/components/        FloorMap, Queue, WhyPanel, shared UI + chart wrapper
 │   ├── src/theme.js           colours, names, chart styling
 │   ├── dist/                  built app (committed; served by FastAPI)
@@ -449,7 +545,8 @@ predictive-maintenance/
 │   ├── test_models.py         simulator, split/leakage, features, contract   (10)
 │   ├── test_fusion.py         calibration, ranking, safeguard, windows, metrics, outputs (24)
 │   ├── test_dashboard.py      Streamlit: headless render + every control     (3)
-│   └── test_api.py            web API: live model = pipeline, queue, what-if, errors (21)
+│   ├── test_api.py            web API: live model = pipeline, queue, what-if, errors (21)
+│   └── test_upgrades.py       baselines, savings, RUL, CSV scoring, drift, feedback (17)
 ├── results/                   committed outputs (metrics CSVs, figures, ranked queues)
 ├── data/{simulated,processed,raw}/   regenerated, not committed
 ├── models/                    regenerated, not committed (*.pkl incl. calibrators)
@@ -469,6 +566,9 @@ predictive-maintenance/
 | `results/metrics/strategy_per_class.csv` | Per strategy × class: recall, buried, queue share, CIs |
 | `results/metrics/k_sensitivity.csv` | All strategies across crew capacity k = 2…16 |
 | `results/predictions/ranked_alerts_<S>.csv` | Full ranked queue per window per strategy |
+| `results/metrics/baseline_comparison.csv`, `baseline_per_class.csv` | AI vs baselines, with bootstrap CI of the gain |
+| `results/metrics/rul_metrics.csv`, `results/predictions/rul_predictions.csv` | Remaining-useful-life accuracy and test predictions |
+| `results/metrics/drift_psi.csv`, `weekly_performance.csv` | Drift per sensor per week; weekly recall/precision/Brier |
 | `results/figures/*.png` | Confusion matrices, PR curves, reliability, calibration, recall@k, queue share, k-sensitivity |
 
 ---
@@ -550,6 +650,16 @@ meeting and open each page once, so everything is loaded. Never run the pipeline
 If someone asks "where is the AI?", go to **How it works → Multi-machine modelling**,
 then show the what-if slider.
 
+**Extra 4 minutes for the industry mentor (v1.1 pages):**
+
+| Page | Do | Say |
+|---|---|---|
+| **Evidence → AI vs today** | Point at the four rows, then the compressor card | "Same crew. Alarm limits catch 140 of 156 failures, and only 8 of 22 compressors. The AI catches all 156, about 19 hours ahead." |
+| AI vs today → savings calculator | Ask the mentor for his downtime cost per hour and type it in | "These are your numbers. The outcomes are our measured test results." |
+| Machine detail → *Remaining useful life* | Point at the line falling into the 24 h band | "It also says how long you have: about 12 hours, between 4 and 28." |
+| **Operations → Score your data** | Download the sample, upload it | "Any plant file in this format gets scored by the same models. Same queue as the live screen." |
+| **Operations → Model health** | Slide *simulate a faulty sensor* to −8% on pump flow | "If a sensor drifts after deployment, the system flags it before you trust its alerts." |
+
 ---
 
 ## 8. Questions to expect, and answers
@@ -600,8 +710,10 @@ first when the crew can't do everything, and checks that the order is fair acros
 machine types.
 
 **Q: What about model drift?**
-It isn't handled yet. It's on the roadmap: monitor calibration (Brier per class)
-weekly and refit calibrators on recent labelled data (§12).
+The Model health page tracks it: weekly PSI per sensor against the training data, PSI
+of the model's scores, and weekly recall. You can simulate a faulty sensor there and
+watch the alarm fire. Technician feedback collects new labels for retraining. Automatic
+recalibration is still on the backlog (§12).
 
 ---
 
@@ -628,19 +740,22 @@ weekly and refit calibrators on recent labelled data (§12).
 - Event-level recall saturates near 1.0, because simulated degradation is strong
   near failure. Reading-level and window-level metrics are the informative ones.
 - A single model-alert threshold (0.5) is used, and model hyperparameters are not tuned.
-- Calibrators are fitted once (no drift handling).
+- Calibrators are fitted once. Drift is detected (Model health) but recalibration is manual.
+- The baseline comparison assumes any visit in the 24 h before a failure finds it.
+- Remaining-life ranges are narrower than 80% close to failure; compressor estimates are optimistic.
 
 ---
 
 ## 11. For the next developer: testing plan
 
-**Existing tests (58, all passing).** Run them with `python -m pytest -q`; CI runs them on every push.
+**Existing tests (75, all passing).** Run them with `python -m pytest -q`; CI runs them on every push.
 
 | File | Covers |
 |---|---|
 | `tests/test_models.py` | simulator schema per class, label = horizon rule, sampling rate, degradation signal present, chronological split + purge gap, time-based features, prediction contract |
 | `tests/test_fusion.py` | freshness formula, priority formula, stale readings rank lower, calibrators refuse test data, calibration monotonic + bounded + improves Brier, S1/S2 order, determinism, S4 promotes eligible class / ignores ineligible / equals S3 when nothing to fix, one snapshot per machine per window, target & down-machine logic, new/ongoing, buried-alert counting, comparison shapes and CIs, real output files |
 | `tests/test_dashboard.py` | Streamlit: all tabs render; queue size = TOP_K; every strategy, window, machine, radio; machine choice survives a window change |
+| `tests/test_upgrades.py` | PSI behaviour, schedule/alarm selection rules, savings arithmetic, feedback round-trip, CSV validation errors, AI beats baselines with CI > 0, RUL beats naive and ranges ordered, **uploaded sample = live queue**, savings/health/feedback endpoints, injected fault detected |
 | `tests/test_api.py` | web API: fleet/window shapes, queue size and order for every rule and crew size, live ranking = saved ranking, **live model = pipeline predictions**, what-if identity and direction, machine detail, all analysis endpoints JSON-safe, 404/422 errors |
 
 **Testing tasks, in priority order:**
@@ -673,13 +788,13 @@ Ordered by value for the review. "Where" names the file to change.
 | # | Enhancement | Where | Notes |
 |---|---|---|---|
 | 1 | **Seed-robustness table** (5 seeds, mean ± std) | new `src/robustness.py`, add a stage in `main.py` | Strongest answer to "is this a fluke?" |
-| 2 | **Cost view:** expected downtime cost avoided per strategy, with editable ₹/hour inputs per class | new `/api/cost` endpoint + a page in `frontend/src/pages/` | Speaks the industrialist's language. Label the inputs as assumptions |
+| 2 | ~~Cost view~~ ✅ done as the savings calculator (§4.9). Next: ₹/hour **per machine type** | `src/baselines.py`, `Compare.jsx` | |
 | 3 | **Editable consequence weights in the UI**, re-ranking live | `api/service.py` (accept weights), Control room | Lets the client plug in their own downtime costs |
-| 4 | **Drift monitoring:** rolling per-class Brier, with a recalibration trigger | `fusion_engine.py`, new web page | |
+| 4 | ~~Drift monitoring~~ ✅ done (§4.9). Next: automatic recalibration trigger | `model_health.py`, `fusion_engine.py` | |
 | 5 | **Power BI version** of the dashboard on the CSVs in `results/` | `dashboard/powerbi/` | The brief mentions Grafana/Power BI |
 | 6 | **Learned fusion weights** (e.g. tune severity to maximise worst-class recall on validation) | `fusion_engine.py`, new strategy S5 | Must be evaluated on test only once |
 | 7 | **Real dataset plug-in** (e.g. AI4I 2020 as a 4th class) | `data_loader.py`, `config.MACHINE_CLASSES` | Shows the schema works on real data |
-| 8 | **Remaining-useful-life view** using `time_to_failure_h` | new model per class | |
+| 8 | ~~Remaining-useful-life view~~ ✅ done (§4.9). Next: conformal calibration of the range | `src/rul.py` | |
 | 9 | **CMMS export:** queue as work-request CSV | `alert_manager.py` | |
 | 10 | Hyperparameter tuning per class (on validation) | `train_models.py` | Re-run everything after |
 
