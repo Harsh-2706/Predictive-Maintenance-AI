@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as echarts from "echarts";
 import { api } from "../api.js";
 import { useAsync, useDebounced } from "../hooks.js";
-import { C, CLASS, MODEL_NAME, axis, chartBase, fmtTime, pct, sensorName, sensorUnit } from "../theme.js";
+import { C, CLASS, MODEL_NAME, axis, chartBase, fmtTime, pct, rulText, sensorName, sensorUnit } from "../theme.js";
 import WhyPanel from "../components/WhyPanel.jsx";
 import { Chart, ClassTag, CrewSlider, ErrorState, Loading, StrategyPicker } from "../components/ui.jsx";
 
@@ -72,7 +72,7 @@ export default function Machine({ fleet, machineId, strategy, setStrategy, k, se
             <div className="machine-facts" aria-label="Selected shift summary">
               <div><span>Review window</span><b>{point ? fmtTime(point.end) : "No reading"}</b></div>
               <div><span>Queue status</span><b>{queueStatus}</b></div>
-              <div><span>Reporting</span><b>{point ? "Reporting" : "Not reporting"}</b></div>
+              <div><span>Estimated time to failure</span><b>{point ? rulText(point, m.rul_cap_h) : "–"}</b></div>
             </div>
           </section>
 
@@ -82,6 +82,18 @@ export default function Machine({ fleet, machineId, strategy, setStrategy, k, se
               <p className="muted small">Select a shift to inspect it. Use the control below the chart to zoom.</p>
             </div>
             <Chart height={300} option={riskOption(m, w)}
+                   onEvents={{ click: (p) => { const t = m.timeline[p.dataIndex]; if (t) setW(t.window); } }} />
+          </section>
+
+          <section className="panel machine-rul">
+            <div className="panel-head">
+              <h2>Remaining useful life</h2>
+              <p className="muted small">
+                A second model estimates hours until failure, with an 80% range. It is capped at {m.rul_cap_h} h: beyond
+                three days a healthy machine looks the same, so the estimate only becomes specific as wear shows.
+              </p>
+            </div>
+            <Chart height={240} option={rulOption(m, w)}
                    onEvents={{ click: (p) => { const t = m.timeline[p.dataIndex]; if (t) setW(t.window); } }} />
           </section>
 
@@ -110,6 +122,16 @@ export default function Machine({ fleet, machineId, strategy, setStrategy, k, se
                      : <p className="muted">Pick a shift where the machine reported.</p>}
             </section>
           </div>
+
+          <section className="panel feedback-panel">
+            <div className="panel-head">
+              <h2>Record the inspection result</h2>
+              <p className="muted small">What did the crew find on {m.id} in this shift? Confirmed outcomes measure real-world
+                precision and become labels for retraining. See them all under Operations › Model health.</p>
+            </div>
+            {point ? <FeedbackForm m={m} w={w} point={point} strategy={strategy} k={k} />
+                   : <p className="muted">Pick a shift where the machine reported.</p>}
+          </section>
         </>
       )}
     </div>
@@ -158,6 +180,80 @@ function riskOption(m, w) {
       { name: "In maintenance queue", type: "line", data: [], itemStyle: { color: "rgba(242,183,5,0.6)" } },
     ],
   };
+}
+
+function rulOption(m, w) {
+  const x = m.timeline.map((t) => t.end);
+  const color = CLASS[m.cls].color;
+  const sel = m.timeline.findIndex((t) => t.window === w);
+  const low = m.timeline.map((t) => t.rul_low_h);
+  const band = m.timeline.map((t) => (t.rul_high_h == null ? null : t.rul_high_h - t.rul_low_h));
+  return {
+    ...chartBase,
+    grid: { left: 52, right: 24, top: 36, bottom: 30 },
+    legend: { top: 0, left: 0, textStyle: { color: C.muted }, data: ["Estimated hours left", "80% range"] },
+    tooltip: {
+      ...chartBase.tooltip, trigger: "axis",
+      formatter: (ps) => { const t = m.timeline[ps[0].dataIndex];
+        return `<b>${fmtTime(t.end)}</b><br/>Estimated time left: ${rulText(t, m.rul_cap_h)}`; },
+    },
+    xAxis: axis({ type: "category", data: x, axisLabel: { color: C.muted, formatter: (v) => fmtTime(v).split(",")[0] } }),
+    yAxis: axis({ type: "value", min: 0, max: m.rul_cap_h, interval: 24, axisLabel: { color: C.muted, formatter: (v) => `${v} h` } }),
+    dataZoom: [{ type: "inside" }],
+    series: [
+      { name: "range-base", type: "line", data: low, stack: "rul", symbol: "none", lineStyle: { opacity: 0 }, tooltip: { show: false } },
+      { name: "80% range", type: "line", data: band, stack: "rul", symbol: "none", lineStyle: { opacity: 0 },
+        itemStyle: { color: color + "33" }, areaStyle: { color: color + "2E" } },
+      { name: "Estimated hours left", type: "line", data: m.timeline.map((t) => t.rul_h), symbolSize: 5,
+        itemStyle: { color }, lineStyle: { color, width: 2.2 },
+        markLine: { silent: true, symbol: "none", data: [
+          ...m.failures.map((f) => ({ xAxis: nearestIndex(x, f), lineStyle: { color: C.signal, width: 2 },
+                                      label: { formatter: "Failure", color: C.signal, position: "insideEndTop" } })),
+          ...(sel >= 0 ? [{ xAxis: sel, lineStyle: { color: C.ink, width: 1 }, label: { show: false } }] : []),
+          { yAxis: 24, lineStyle: { color: C.safety, type: "dashed", width: 1.5 }, label: { formatter: "24 h", color: "#8a6a00" } },
+        ] } },
+    ],
+  };
+}
+
+function FeedbackForm({ m, w, point, strategy, k }) {
+  const [outcome, setOutcome] = useState(null);
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setOutcome(null); setNote(""); setSaved(null); setErr(null); }, [m.id, w]);
+
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    try { setSaved(await api.addFeedback(m.id, { window: w, outcome, note, strategy, k })); }
+    catch (e) { setErr(e); }
+    setBusy(false);
+  };
+  if (saved) {
+    const s = saved.summary;
+    return (
+      <p className="feedback-saved" role="status">
+        Saved for {m.id}, shift ending {fmtTime(point.end)}. {s.total} inspection{s.total === 1 ? "" : "s"} recorded so far
+        {s.confirmed_precision != null && <>; {pct(s.confirmed_precision)} of checked alerts were real faults</>}.
+        {" "}<button type="button" className="link" onClick={() => setSaved(null)}>Record another</button>
+      </p>
+    );
+  }
+  return (
+    <div className="feedback-form">
+      <div className="segmented" role="radiogroup" aria-label="Inspection outcome">
+        {[["fault_found", "Fault found"], ["no_fault", "No fault found"], ["not_checked", "Could not check"]].map(([v, l]) => (
+          <button key={v} type="button" role="radio" aria-checked={outcome === v} className={outcome === v ? "on" : ""}
+                  onClick={() => setOutcome(v)}>{l}</button>
+        ))}
+      </div>
+      <input type="text" className="note-input" maxLength={300} placeholder="Note for the record (optional), e.g. bearing noise, seal leak"
+             value={note} onChange={(e) => setNote(e.target.value)} aria-label="Inspection note" />
+      <button type="button" className="btn primary" disabled={!outcome || busy} onClick={submit}>{busy ? "Saving…" : "Save result"}</button>
+      {err && <ErrorState title="Couldn't save" error={err} />}
+    </div>
+  );
 }
 
 function queueRuns(tl) {

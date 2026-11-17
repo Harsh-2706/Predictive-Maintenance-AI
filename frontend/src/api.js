@@ -33,4 +33,15 @@ export const api = {
   calibration: () => get("/calibration"),
   fairness: () => get("/fairness"),
   models: () => get("/models"),
+  baselines: () => get("/baselines"),
+  savings: (body) => post("/savings", body),
+  rul: () => get("/rul"),
+  health: (inject) => request(`/health/model${inject ? `?inject_class=${inject.cls}&inject_sensor=${inject.sensor}&inject_pct=${inject.pct}&inject_from_week=${inject.from_week}` : ""}`),
+  feedback: () => request("/feedback"),
+  addFeedback: (id, body) => post(`/machine/${id}/feedback`, body),
+  scoreCsv: (file, k) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request(`/score-csv?k=${k}`, { method: "POST", body: form });
+  },
 };

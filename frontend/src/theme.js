@@ -78,3 +78,26 @@ export const axis = (extra = {}) => ({
   nameTextStyle: { color: C.muted, fontSize: 12 },
   ...extra,
 });
+
+// Indian rupee formatting: crore / lakh for large amounts.
+export function inr(x) {
+  if (x == null || Number.isNaN(x)) return "–";
+  const a = Math.abs(x), sign = x < 0 ? "−" : "";
+  if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} crore`;
+  if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(1)} lakh`;
+  return `${sign}₹${Math.round(a).toLocaleString("en-IN")}`;
+}
+
+// Remaining-life text: "~12 h (4–28 h)"; at the cap it means "no failure expected within 3 days".
+export function rulText(m, cap = 72) {
+  if (!m || m.rul_h == null) return "–";
+  if (m.rul_h >= cap - 2) return `More than ${cap / 24} days`;
+  return `~${Math.round(m.rul_h)} h (${Math.round(m.rul_low_h)}–${Math.round(m.rul_high_h)} h)`;
+}
+
+export const APPROACH = {
+  reactive: { short: "Run to failure", color: "#9AA0A6" },
+  schedule: { short: "Fixed schedule", color: "#A86818" },
+  threshold: { short: "Alarm limits", color: "#6682B7" },
+  ai: { short: "Our AI", color: "#F2B705" },
+};

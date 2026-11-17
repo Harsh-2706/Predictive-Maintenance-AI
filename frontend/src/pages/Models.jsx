@@ -121,8 +121,45 @@ export default function Models() {
         <Chart height={270} option={volumeOption(models.data.volume)} />
       </section>
 
+      <RulEvidence />
+
       <p className="fine models-disclosure">All metrics and calibration evidence use simulated plant data and the held-out test split.</p>
     </div>
+  );
+}
+
+function RulEvidence() {
+  const r = useAsync(() => api.rul(), []);
+  if (r.error) return <ErrorState title="Couldn't load remaining-life results" error={r.error} onRetry={r.retry} />;
+  if (!r.data) return <Loading what="Loading remaining-life results" />;
+  return (
+    <section className="panel rul-evidence" aria-labelledby="rul-title">
+      <div className="models-section-head">
+        <div>
+          <p className="models-kicker">Remaining useful life</p>
+          <h2 id="rul-title">How many hours are left?</h2>
+          <p className="muted small">One gradient-boosting regressor per class (plus 10th/90th-percentile models for the range),
+            trained on the same 19 features. Target capped at {r.data.cap_h} h. Test period only.</p>
+        </div>
+      </div>
+      <table className="data-table">
+        <thead><tr><th>Machine type</th><th className="num">Error, last 24 h before failure</th><th className="num">Naive guess error</th>
+          <th className="num">Within ±6 h</th><th className="num">True value inside 80% range</th><th className="num">Bias</th></tr></thead>
+        <tbody>{r.data.metrics.map((m) => (
+          <tr key={m.machine_class}>
+            <td><b>{CLASS[m.machine_class].name}</b></td>
+            <td className="num">{m.mae_last24_h.toFixed(1)} h</td>
+            <td className="num muted">{m.naive_mae_last24_h.toFixed(0)} h</td>
+            <td className="num">{pct(m.within_6h_last24)}</td>
+            <td className="num">{pct(m.coverage_80_last24)}</td>
+            <td className="num">{m.bias_last24_h > 0 ? "+" : ""}{m.bias_last24_h.toFixed(1)} h</td>
+          </tr>))}
+        </tbody>
+      </table>
+      <p className="fine">Error = mean absolute difference between estimated and actual hours to failure. Naive guess = always
+        predicting the training median. Positive bias means the estimate is too optimistic. Compressors have the noisiest sensors, so
+        their estimate is the least sharp: rely on the risk score and the range for them.</p>
+    </section>
   );
 }
 

@@ -1,5 +1,7 @@
 import React from "react";
 import { CLASS, pct } from "../theme.js";
+
+const left = (m) => (m.rul_h == null || m.rul_h >= 70 ? null : `~${Math.round(m.rul_h)} h left`);
 import { ClassTag } from "./ui.jsx";
 
 /** The maintenance queue as the crew lead would read it. */
@@ -25,6 +27,7 @@ export default function Queue({ queue, strategy, onOpen, selected, onSelect, sho
                 ? <>Raw model score {pct(m.raw)}</>
                 : <>
                     <span><b>{pct(m.risk)}</b> failure risk</span>
+                    {left(m) && <span>{left(m)}</span>}
                     {strategy !== "S2_calibrated" && <>
                       <span>consequence ×{m.severity}</span>
                       <span>{m.freshness >= 0.99 ? "live data" : `data ${Math.round(m.age_min)} min old`}</span>

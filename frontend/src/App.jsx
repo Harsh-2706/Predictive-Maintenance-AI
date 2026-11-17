@@ -7,18 +7,25 @@ import Machine from "./pages/Machine.jsx";
 import Fairness from "./pages/Fairness.jsx";
 import Models from "./pages/Models.jsx";
 import Method from "./pages/Method.jsx";
+import Compare from "./pages/Compare.jsx";
+import Upload from "./pages/Upload.jsx";
+import Health from "./pages/Health.jsx";
 import { ErrorState } from "./components/ui.jsx";
 import plantMaintenanceLogo from "./assets/plant-maintenance-logo.png";
 
 const PAGES = [
   { id: "story", label: "The story" },
+  { id: "compare", label: "AI vs today" },
   { id: "control", label: "Control room" },
   { id: "machine", label: "Machine detail" },
   { id: "fairness", label: "Fairness lab" },
   { id: "models", label: "The models" },
   { id: "method", label: "How it works" },
+  { id: "upload", label: "Score your data" },
+  { id: "health", label: "Model health" },
 ];
-const EVIDENCE_PAGES = PAGES.filter((page) => ["story", "fairness", "models", "method"].includes(page.id));
+const EVIDENCE_PAGES = PAGES.filter((page) => ["story", "compare", "fairness", "models", "method"].includes(page.id));
+const OPS_PAGES = PAGES.filter((page) => ["upload", "health"].includes(page.id));
 
 // Route lives in the URL hash: #/control, #/machine/C-08
 function readHash() {
@@ -59,6 +66,8 @@ export default function App() {
   const openMachine = (id) => { setMachineId(id); go("machine", id); };
   const onEvidenceRoute = EVIDENCE_PAGES.some((page) => page.id === route.page);
   const onDecisionRoute = route.page === "control" || route.page === "machine";
+  const onOpsRoute = OPS_PAGES.some((page) => page.id === route.page);
+  const subPages = onEvidenceRoute ? EVIDENCE_PAGES : onOpsRoute ? OPS_PAGES : null;
 
   if (fleet.error) {
     return (
@@ -85,6 +94,8 @@ export default function App() {
                aria-current={onDecisionRoute ? "page" : undefined}>Decision</a>
             <a href="#/story" className={onEvidenceRoute ? "active" : ""}
                aria-current={onEvidenceRoute ? "page" : undefined}>Evidence</a>
+            <a href="#/upload" className={onOpsRoute ? "active" : ""}
+               aria-current={onOpsRoute ? "page" : undefined}>Operations</a>
           </nav>
           <div className="sim-source">
             <button type="button" className="sim-flag" aria-label="About simulated data" aria-haspopup="dialog"
@@ -117,9 +128,9 @@ export default function App() {
             )}
           </div>
         </div>
-        {onEvidenceRoute && (
-          <nav className="evidence-nav" aria-label="Evidence sections">
-            {EVIDENCE_PAGES.map((page) => (
+        {subPages && (
+          <nav className="evidence-nav" aria-label={onOpsRoute ? "Operations sections" : "Evidence sections"}>
+            {subPages.map((page) => (
               <a key={page.id} href={`#/${page.id}`} className={route.page === page.id ? "active" : ""}
                  aria-current={route.page === page.id ? "page" : undefined}>{page.label}</a>
             ))}
@@ -133,6 +144,9 @@ export default function App() {
         {route.page === "fairness" && <Fairness {...shared} />}
         {route.page === "models" && <Models {...shared} />}
         {route.page === "method" && <Method {...shared} />}
+        {route.page === "compare" && <Compare {...shared} />}
+        {route.page === "upload" && <Upload {...shared} />}
+        {route.page === "health" && <Health {...shared} />}
       </main>
     </div>
   );
