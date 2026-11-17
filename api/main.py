@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="Predictive Maintenance Platform API", version="1.0", lifespan=lifespan)
+app = FastAPI(title="Predictive Maintenance Platform API", version="1.1", lifespan=lifespan)
 # Allow the Vite dev server (npm run dev) to call the API.
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -120,6 +120,81 @@ def fairness():
 @app.get("/api/models")
 def models():
     return svc().models()
+
+
+# ---------------------------------------------------------------------------
+# Upgrades: baselines + savings, remaining life, model health, feedback, CSV scoring
+# ---------------------------------------------------------------------------
+@app.get("/api/baselines")
+def baselines():
+    return svc().baselines()
+
+
+class Costs(BaseModel):
+    downtime_cost_per_hour: float = Field(..., ge=0, description="INR lost per hour a machine is stopped")
+    breakdown_downtime_hours: float = Field(..., ge=0, le=720)
+    planned_downtime_hours: float = Field(..., ge=0, le=720)
+    breakdown_repair_cost: float = Field(..., ge=0)
+    planned_repair_cost: float = Field(..., ge=0)
+    inspection_cost: float = Field(..., ge=0)
+    period_days: float = Field(30, ge=1, le=366)
+
+
+@app.post("/api/savings")
+def savings(body: Costs):
+    costs = body.model_dump()
+    days = costs.pop("period_days")
+    return _guard(svc().savings, costs, days)
+
+
+@app.get("/api/rul")
+def rul_metrics():
+    return svc().rul_metrics()
+
+
+@app.get("/api/health/model")
+def model_health(inject_class: str | None = None, inject_sensor: str | None = None,
+                 inject_pct: float = Query(0, ge=-50, le=50), inject_from_week: int = Query(2, ge=0, le=10)):
+    inject = None
+    if inject_class and inject_sensor and inject_pct:
+        inject = {"cls": inject_class, "sensor": inject_sensor, "pct": inject_pct, "from_week": inject_from_week}
+    return _guard(svc().health, inject)
+
+
+class Feedback(BaseModel):
+    window: int
+    outcome: str = Field(..., description="fault_found | no_fault | not_checked")
+    note: str = Field("", max_length=300)
+    strategy: str = "S3_risk_priority"
+    k: int = Field(config.TOP_K, ge=1, le=30)
+
+
+@app.post("/api/machine/{machine_id}/feedback")
+def add_feedback(machine_id: str, body: Feedback):
+    return _guard(svc().add_feedback, machine_id, body.window, body.outcome, body.note, body.strategy, body.k)
+
+
+@app.get("/api/feedback")
+def feedback_summary():
+    return svc().feedback_summary()
+
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+@app.post("/api/score-csv")
+async def score_csv(file: UploadFile = File(...), k: int = CrewSize):
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File is larger than 10 MB.")
+    return _guard(svc().score_csv, data, k)
+
+
+@app.get("/api/sample-csv", response_class=PlainTextResponse)
+def sample_csv(window: int | None = None):
+    text = _guard(svc().sample_csv, window)
+    return PlainTextResponse(text, media_type="text/csv",
+                             headers={"Content-Disposition": 'attachment; filename="sample_sensor_readings.csv"'})
 
 
 # ---------------------------------------------------------------------------

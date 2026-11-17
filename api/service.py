@@ -7,6 +7,8 @@ questions about the plant. This is where the ML runs LIVE:
   * what_if()   re-scores a machine with the real model after the user moves
                 sensor sliders, then shows where it would land in the queue.
   * window()    ranks the fleet for any review window, strategy and crew size.
+  * score_csv() scores an uploaded sensor file with the same models.
+  * health()    checks live for data drift (optionally with an injected sensor fault).
 
 Everything reads the outputs of `python main.py` (models/, results/, data/).
 """
@@ -22,7 +24,7 @@ from sklearn.calibration import calibration_curve
 from sklearn.metrics import average_precision_score
 
 import config
-from src import alert_manager, fusion_engine
+from src import alert_manager, baselines, batch_scoring, feedback, fusion_engine, model_health, rul
 from src.data_preprocessing import add_features, feature_columns, split_cutoffs
 from src.train_models import load_model
 
@@ -66,8 +68,13 @@ class PlantService:
                             else fusion_engine.fit_calibrators(self.val))
         self.test = fusion_engine.apply_calibration(self.test, self.calibrators)
         self.val = fusion_engine.apply_calibration(self.val, self.calibrators)
-        self.snaps = fusion_engine.add_priority_components(
+        self.rul_bundles = {c: rul.load_rul(c) for c in CLASSES}
+        snaps = fusion_engine.add_priority_components(
             fusion_engine.apply_calibration(alert_manager.build_windows(self.test), self.calibrators))
+        rp = rul.load_rul_predictions()[["timestamp", "machine_id", "rul_h", "rul_low_h", "rul_high_h"]]
+        self.snaps = snaps.merge(rp, on=["timestamp", "machine_id"], how="left")
+        if len(self.snaps) != len(snaps):
+            raise ValueError("RUL predictions do not match the test snapshots; re-run `python main.py`.")
         self.windows = (self.snaps[["window", "window_end"]].drop_duplicates()
                         .sort_values("window").reset_index(drop=True))
         self.failures = pd.read_csv(config.DATA_SIM_DIR / "failure_events.csv", parse_dates=["failure_time"])
@@ -77,7 +84,9 @@ class PlantService:
                               .drop_duplicates().set_index("machine_id")["machine_class"].to_dict())
         self.metrics = {name: pd.read_csv(config.METRICS_DIR / f"{name}.csv") for name in
                         ["model_metrics", "calibration_report", "strategy_comparison",
-                         "strategy_per_class", "k_sensitivity", "alert_volume_by_class"]}
+                         "strategy_per_class", "k_sensitivity", "alert_volume_by_class",
+                         "baseline_comparison", "baseline_per_class", "rul_metrics"]}
+        self.monitor = model_health.HealthMonitor(self.test, self.val)
         self._features: dict[str, pd.DataFrame] = {}
         self.cache = self._load_or_build_cache()
 
@@ -186,6 +195,8 @@ class PlantService:
                 "severity": _round(row.severity, 2), "freshness": _round(row.freshness, 3),
                 "age_min": _round(row.age_min, 1), "priority": _round(row.priority_score),
                 "promoted": bool(row.promoted), "fails_24h": int(row.target),
+                "rul_h": _round(row.rul_h, 1), "rul_low_h": _round(row.rul_low_h, 1),
+                "rul_high_h": _round(row.rul_high_h, 1),
             })
         for m in sorted(set(self.machine_class) - reporting):
             machines.append({"id": m, "cls": self.machine_class[m], "rank": None, "in_queue": False,
@@ -231,7 +242,10 @@ class PlantService:
             "sample_every_min": config.MACHINE_CLASSES[cls]["sample_every_min"],
             "timeline": [{"window": int(x.window), "end": _iso(x.window_end), "raw": _round(x.predicted_risk),
                           "risk": _round(x.calibrated_risk), "priority": _round(x.priority_score),
-                          "rank": int(x.rank), "in_queue": bool(x.in_top_k)} for x in mr.itertuples()],
+                          "rank": int(x.rank), "in_queue": bool(x.in_top_k), "rul_h": _round(x.rul_h, 1),
+                          "rul_low_h": _round(x.rul_low_h, 1), "rul_high_h": _round(x.rul_high_h, 1)}
+                         for x in mr.itertuples()],
+            "rul_cap_h": rul.RUL_CAP_H,
             "failures": [_iso(t) for t in fails["failure_time"]],
             "sensors": [{"name": s, "normal": _round(healthy["median"][s], 3),
                          "points": [[_iso(t), _round(v, 3)] for t, v in zip(hourly["timestamp"], hourly[s])]}
@@ -365,3 +379,69 @@ class PlantService:
             "tight_crew": {s: {c: _round(sens.loc[(s, 4), f"recall_{c}"]) for c in CLASSES}
                            for s in config.STRATEGIES},
         }
+
+    # ------------------------------------------------------------------ upgrades
+    def baselines(self) -> dict:
+        comp = self.metrics["baseline_comparison"]
+        meta = json.loads((config.METRICS_DIR / "baseline_run.json").read_text())
+        return {"approaches": [{"id": a, "label": d} for a, d in baselines.APPROACHES.items()],
+                "comparison": _records(comp), "per_class": _records(self.metrics["baseline_per_class"]),
+                "k": meta["k"], "threshold_sigma": meta["threshold_sigma"],
+                "schedule_cycle_shifts": meta["schedule_cycle_shifts"],
+                "default_costs": baselines.DEFAULT_COSTS}
+
+    def savings(self, costs: dict, period_days: float = 30.0) -> dict:
+        if not 1 <= period_days <= 366:
+            raise ValueError("period_days must be between 1 and 366")
+        out = baselines.savings(self.metrics["baseline_comparison"], costs, period_days)
+        out["rows"] = _records(out["rows"])
+        return out
+
+    def rul_metrics(self) -> dict:
+        return {"cap_h": rul.RUL_CAP_H, "metrics": _records(self.metrics["rul_metrics"])}
+
+    def health(self, inject: dict | None = None) -> dict:
+        if inject:
+            cls, sensor = inject.get("cls"), inject.get("sensor")
+            if cls not in config.MACHINE_CLASSES or sensor not in config.MACHINE_CLASSES[cls]["sensors"]:
+                raise ValueError(f"No sensor {sensor!r} on class {cls!r}")
+            if not -50 <= float(inject.get("pct", 0)) <= 50:
+                raise ValueError("pct must be between -50 and 50")
+        d = self.monitor.drift(inject)
+        return {
+            "thresholds": {"watch": model_health.PSI_WATCH, "drift": model_health.PSI_DRIFT},
+            "weekly": _records(d["weekly"]), "worst": _records(d["worst"]),
+            "score_drift": _records(self.monitor.score_drift()),
+            "performance": _records(self.monitor.weekly_performance()),
+            "inject": inject,
+        }
+
+    def add_feedback(self, machine_id: str, w: int, outcome: str, note: str = "", strategy="S3_risk_priority",
+                     k: int = config.TOP_K) -> dict:
+        snap = self._snapshot(machine_id, w)
+        r = self.ranked(strategy, k)
+        rank = r[(r["window"] == w) & (r["machine_id"] == machine_id)]["rank"]
+        row = feedback.record({"machine_id": machine_id, "machine_class": self.machine_class[machine_id],
+                               "window": int(w), "window_end": _iso(snap["window_end"]),
+                               "risk": _round(snap["calibrated_risk"]),
+                               "queue_rank": int(rank.iloc[0]) if len(rank) else None,
+                               "outcome": outcome, "note": note})
+        return {"saved": row, "summary": feedback.summary()}
+
+    def feedback_summary(self) -> dict:
+        return {"outcomes": feedback.OUTCOMES, **feedback.summary()}
+
+    def score_csv(self, data: bytes | str, k: int = config.TOP_K) -> dict:
+        res = batch_scoring.score(batch_scoring.read_csv(data), self.bundles, self.calibrators,
+                                  self.rul_bundles, k)
+        m = res["machines"].copy()
+        m["reading_time"] = m["reading_time"].map(_iso)
+        return {"as_of": _iso(res["as_of"]), "k": k, "rows_used": res["rows_used"], "classes": res["classes"],
+                "warnings": res["warnings"], "machines": _records(m),
+                "queue": _records(m[m["in_queue"]])}
+
+    def sample_csv(self, w: int | None = None) -> str:
+        w = int(len(self.windows) * 0.42) if w is None else w
+        if not 0 <= w < len(self.windows):
+            raise KeyError(f"No review window {w}")
+        return batch_scoring.sample_csv(self.raw, self.windows.loc[w, "window_end"])
